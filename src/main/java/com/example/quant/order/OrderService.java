@@ -7,36 +7,38 @@ import com.example.quant.model.OrderSide;
 import com.example.quant.model.OrderType;
 import com.example.quant.model.PlaceOrderCommand;
 import com.example.quant.service.NotificationService;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 下单层服务（只用 REST API）。
+ * 下单层服务（只用 REST API，订单记录持久化到 DuckDB）。
  */
 @Service
 public class OrderService {
 
-    private final Map<String, OrderRecord> orderStore = new ConcurrentHashMap<>();
     private final AppProperties properties;
     private final BinanceRestClient marketClient;
     private final BinanceTradeClient binanceTradeClient;
     private final NotificationService notificationService;
+    private final JdbcTemplate jdbcTemplate;
 
     public OrderService(AppProperties properties,
                         BinanceRestClient marketClient,
                         BinanceTradeClient binanceTradeClient,
-                        NotificationService notificationService) {
+                        NotificationService notificationService,
+                        JdbcTemplate jdbcTemplate) {
         this.properties = properties;
         this.marketClient = marketClient;
         this.binanceTradeClient = binanceTradeClient;
         this.notificationService = notificationService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public String placeOrder(PlaceOrderCommand cmd) {
@@ -78,7 +80,7 @@ public class OrderService {
             record.status = "真实已提交";
         }
 
-        orderStore.put(localOrderId, record);
+        insertOrder(record);
         return localOrderId;
     }
 
@@ -96,26 +98,75 @@ public class OrderService {
         closeRecord.status = "强平提交";
         closeRecord.createdAt = Instant.now();
         closeRecord.remark = remark;
-        orderStore.put(localOrderId, closeRecord);
+        insertOrder(closeRecord);
     }
 
     public List<OrderRecord> query(OrderQuery query) {
         int page = query.page() == null ? 1 : Math.max(query.page(), 1);
         int size = query.size() == null ? 20 : Math.max(query.size(), 1);
+        long fromSec = query.fromEpochSecond() == null ? 0 : query.fromEpochSecond();
+        long toSec = query.toEpochSecond() == null ? Long.MAX_VALUE : query.toEpochSecond();
+        String symbol = query.symbol() == null ? "" : query.symbol().trim();
+        String status = query.status() == null ? "" : query.status().trim();
 
-        return orderStore.values().stream()
-                .filter(o -> query.symbol() == null || query.symbol().isBlank() || o.symbol.equalsIgnoreCase(query.symbol()))
-                .filter(o -> query.status() == null || query.status().isBlank() || o.status.equalsIgnoreCase(query.status()))
-                .filter(o -> query.fromEpochSecond() == null || o.createdAt.getEpochSecond() >= query.fromEpochSecond())
-                .filter(o -> query.toEpochSecond() == null || o.createdAt.getEpochSecond() <= query.toEpochSecond())
-                .sorted(Comparator.comparing((OrderRecord o) -> o.createdAt).reversed())
-                .skip((long) (page - 1) * size)
-                .limit(size)
-                .toList();
+        return jdbcTemplate.query(
+                """
+                SELECT * FROM orders
+                WHERE (? = '' OR lower(symbol)=lower(?))
+                  AND (? = '' OR lower(status)=lower(?))
+                  AND created_at >= ?
+                  AND created_at <= ?
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                this::mapRow,
+                symbol, symbol,
+                status, status,
+                fromSec * 1000,
+                toSec * 1000,
+                size,
+                (long) (page - 1) * size
+        );
     }
 
     public List<OrderRecord> listOrders() {
-        return new ArrayList<>(orderStore.values());
+        return jdbcTemplate.query("SELECT * FROM orders ORDER BY created_at DESC", this::mapRow);
+    }
+
+    private void insertOrder(OrderRecord record) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO orders(local_order_id,exchange_order_id,strategy_id,symbol,side,order_type,amount_usdt,quantity,status,created_at,remark)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                record.localOrderId,
+                record.exchangeOrderId,
+                record.strategyId,
+                record.symbol,
+                record.side.name(),
+                record.orderType.name(),
+                record.amountUsdt,
+                record.quantity,
+                record.status,
+                record.createdAt.toEpochMilli(),
+                record.remark
+        );
+    }
+
+    private OrderRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
+        OrderRecord r = new OrderRecord();
+        r.localOrderId = rs.getString("local_order_id");
+        r.exchangeOrderId = rs.getString("exchange_order_id");
+        r.strategyId = rs.getString("strategy_id");
+        r.symbol = rs.getString("symbol");
+        r.side = OrderSide.valueOf(rs.getString("side"));
+        r.orderType = OrderType.valueOf(rs.getString("order_type"));
+        r.amountUsdt = rs.getDouble("amount_usdt");
+        r.quantity = rs.getDouble("quantity");
+        r.status = rs.getString("status");
+        r.createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
+        r.remark = rs.getString("remark");
+        return r;
     }
 
     private double calculateQuantity(String symbol, double amountUsdt) {

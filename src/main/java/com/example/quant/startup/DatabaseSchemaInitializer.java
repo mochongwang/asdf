@@ -38,5 +38,21 @@ public class DatabaseSchemaInitializer implements ApplicationRunner {
                     updated_at BIGINT
                 )
                 """);
+
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS orders (
+                    local_order_id VARCHAR PRIMARY KEY,
+                    exchange_order_id VARCHAR,
+                    strategy_id VARCHAR,
+                    symbol VARCHAR NOT NULL,
+                    side VARCHAR NOT NULL,
+                    order_type VARCHAR NOT NULL,
+                    amount_usdt DOUBLE,
+                    quantity DOUBLE,
+                    status VARCHAR,
+                    created_at BIGINT,
+                    remark VARCHAR
+                )
+                """);
     }
 }
