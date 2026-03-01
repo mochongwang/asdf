@@ -66,6 +66,8 @@ public class AppProperties {
     public static class Data {
         /** K线是否优先使用 WebSocket API 请求（ws-api）。 */
         private boolean klineUseWsApi = true;
+        /** DuckDB 文件路径。 */
+        private String duckdbPath = "./data/quant.duckdb";
 
         public boolean isKlineUseWsApi() {
             return klineUseWsApi;
@@ -73,6 +75,14 @@ public class AppProperties {
 
         public void setKlineUseWsApi(boolean klineUseWsApi) {
             this.klineUseWsApi = klineUseWsApi;
+        }
+
+        public String getDuckdbPath() {
+            return duckdbPath;
+        }
+
+        public void setDuckdbPath(String duckdbPath) {
+            this.duckdbPath = duckdbPath;
         }
     }
 }
