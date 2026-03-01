@@ -1,10 +1,14 @@
 package com.example.quant.order;
 
+import com.example.quant.model.OrderQuery;
+import com.example.quant.model.OrderSide;
+import com.example.quant.model.OrderType;
 import com.example.quant.model.PlaceOrderCommand;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,70 +16,58 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 下单层服务。
- *
- * <p>当前为演示版：
- * 1) 先记录本地订单
- * 2) 预留真实交易所下单扩展点
- * </p>
  */
 @Service
 public class OrderService {
 
-    /** 内存订单库，key=localOrderId。 */
     private final Map<String, OrderRecord> orderStore = new ConcurrentHashMap<>();
 
-    /**
-     * 提交订单。
-     *
-     * @param cmd 下单命令
-     * @return 本地订单ID
-     */
     public String placeOrder(PlaceOrderCommand cmd) {
         String localOrderId = UUID.randomUUID().toString();
-
-        OrderRecord record = new OrderRecord(
-                localOrderId,
-                cmd.strategyId(),
-                cmd.symbol(),
-                cmd.side(),
-                cmd.orderType(),
-                cmd.amountUsdt(),
-                "已提交",
-                Instant.now(),
-                cmd.remark()
-        );
-
+        OrderRecord record = new OrderRecord();
+        record.localOrderId = localOrderId;
+        record.strategyId = cmd.strategyId();
+        record.symbol = cmd.symbol();
+        record.side = cmd.side();
+        record.orderType = cmd.orderType();
+        record.amountUsdt = cmd.amountUsdt();
+        record.status = "已提交";
+        record.createdAt = Instant.now();
+        record.remark = cmd.remark();
         orderStore.put(localOrderId, record);
         return localOrderId;
     }
 
-    /**
-     * 强制平仓（示例：仅做记录）。
-     *
-     * @param symbol 交易对
-     * @param remark 备注
-     */
     public void forceCloseBySymbol(String symbol, String remark) {
         String localOrderId = UUID.randomUUID().toString();
-        OrderRecord closeRecord = new OrderRecord(
-                localOrderId,
-                "SYSTEM",
-                symbol,
-                com.example.quant.model.OrderSide.CLOSE_LONG,
-                com.example.quant.model.OrderType.MARKET,
-                0,
-                "强平提交",
-                Instant.now(),
-                remark
-        );
+        OrderRecord closeRecord = new OrderRecord();
+        closeRecord.localOrderId = localOrderId;
+        closeRecord.strategyId = "SYSTEM";
+        closeRecord.symbol = symbol;
+        closeRecord.side = OrderSide.CLOSE_LONG;
+        closeRecord.orderType = OrderType.MARKET;
+        closeRecord.amountUsdt = 0;
+        closeRecord.status = "强平提交";
+        closeRecord.createdAt = Instant.now();
+        closeRecord.remark = remark;
         orderStore.put(localOrderId, closeRecord);
     }
 
-    /**
-     * 查询全部订单（按内存快照返回）。
-     *
-     * @return 订单列表
-     */
+    public List<OrderRecord> query(OrderQuery query) {
+        int page = query.page() == null ? 1 : Math.max(query.page(), 1);
+        int size = query.size() == null ? 20 : Math.max(query.size(), 1);
+
+        return orderStore.values().stream()
+                .filter(o -> query.symbol() == null || query.symbol().isBlank() || o.symbol.equalsIgnoreCase(query.symbol()))
+                .filter(o -> query.status() == null || query.status().isBlank() || o.status.equalsIgnoreCase(query.status()))
+                .filter(o -> query.fromEpochSecond() == null || o.createdAt.getEpochSecond() >= query.fromEpochSecond())
+                .filter(o -> query.toEpochSecond() == null || o.createdAt.getEpochSecond() <= query.toEpochSecond())
+                .sorted(Comparator.comparing((OrderRecord o) -> o.createdAt).reversed())
+                .skip((long) (page - 1) * size)
+                .limit(size)
+                .toList();
+    }
+
     public List<OrderRecord> listOrders() {
         return new ArrayList<>(orderStore.values());
     }
