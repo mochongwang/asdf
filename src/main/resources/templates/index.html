@@ -81,6 +81,10 @@
 let options = {};
 let token = null;
 
+function authHeaders() {
+    return token ? {'X-Auth-Token': token, 'Content-Type':'application/json'} : {'Content-Type':'application/json'};
+}
+
 function show(data){ document.getElementById('result').textContent = JSON.stringify(data, null, 2); }
 function strategyId(){ return document.getElementById('id').value; }
 
@@ -133,22 +137,22 @@ function payload(){
 }
 
 async function createStrategy(){
-    const res = await fetch('/api/strategies', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload())});
+    const res = await fetch('/api/strategies', {method:'POST', headers:authHeaders(), body:JSON.stringify(payload())});
     show(await res.json());
 }
-async function listStrategies(){ const res = await fetch('/api/strategies'); show(await res.json()); }
-async function enableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/enable`,{method:'POST'}); show(await res.text()); }
-async function disableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/disable`,{method:'POST'}); show(await res.text()); }
-async function triggerStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/trigger`,{method:'POST'}); show(await res.text()); }
+async function listStrategies(){ const res = await fetch('/api/strategies', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function enableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/enable`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
+async function disableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/disable`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
+async function triggerStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/trigger`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
 async function backtest(){
     const req = {startTime:startTime.value, endTime:endTime.value, testAmount:Number(testAmount.value)};
-    const res = await fetch(`/api/strategies/${strategyId()}/backtest`,{method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(req)});
+    const res = await fetch(`/api/strategies/${strategyId()}/backtest`,{method:'POST', headers:authHeaders(), body:JSON.stringify(req)});
     show(await res.json());
 }
-async function loadOrders(){ const res = await fetch('/api/orders?page=1&size=20'); show(await res.json()); }
-async function loadAccounts(){ const res = await fetch('/api/accounts'); show(await res.json()); }
-async function loadNotifications(){ const res = await fetch('/api/notifications'); show(await res.json()); }
-async function loadLeverage(){ const res = await fetch('/api/leverage'); show(await res.json()); }
+async function loadOrders(){ const res = await fetch('/api/orders?page=1&size=20', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadAccounts(){ const res = await fetch('/api/accounts', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadNotifications(){ const res = await fetch('/api/notifications', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadLeverage(){ const res = await fetch('/api/leverage', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
 
 loadOptions();
 </script>

@@ -8,6 +8,7 @@ import com.example.quant.order.OrderService;
 import com.example.quant.service.NotificationService;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -82,5 +83,18 @@ public class StrategyEngineService {
         String localOrderId = orderService.placeOrder(cmd.get());
         notificationService.notify("ORDER", "策略下单", "已提交订单: " + localOrderId);
         return "已提交订单: " + localOrderId;
+    }
+
+    /**
+     * 自动调度使用：轮询触发所有启用策略。
+     *
+     * @return 执行结果集合
+     */
+    public List<String> triggerAllActive() {
+        List<String> results = new ArrayList<>();
+        for (StrategyEntity entity : activeStrategies.values()) {
+            results.add(entity.id + ": " + triggerOnce(entity.id, entity.strategyPath));
+        }
+        return results;
     }
 }

@@ -1,5 +1,6 @@
 package com.example.quant.auth;
 
+import com.example.quant.config.AppProperties;
 import org.springframework.stereotype.Service;
 
 import java.util.Set;
@@ -7,18 +8,21 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 简单鉴权服务（账号密码写死）。
+ * 简单鉴权服务（账号密码由配置提供）。
  */
 @Service
 public class AuthService {
 
-    private static final String USERNAME = "admin";
-    private static final String PASSWORD = "123456";
-
     private final Set<String> tokenStore = ConcurrentHashMap.newKeySet();
+    private final AppProperties properties;
+
+    public AuthService(AppProperties properties) {
+        this.properties = properties;
+    }
 
     public String login(String username, String password) {
-        if (USERNAME.equals(username) && PASSWORD.equals(password)) {
+        if (properties.getAuth().getUsername().equals(username)
+                && properties.getAuth().getPassword().equals(password)) {
             String token = UUID.randomUUID().toString();
             tokenStore.add(token);
             return token;

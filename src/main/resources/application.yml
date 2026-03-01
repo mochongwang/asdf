@@ -1,3 +1,16 @@
 spring:
   application:
     name: crypto-quant-system
+
+app:
+  auth:
+    username: admin
+    password: 123456
+  trading:
+    simulation: true
+  notify:
+    enabled: false
+    wechat-webhook: ""
+  scheduler:
+    enabled: true
+    trigger-interval-ms: 30000
