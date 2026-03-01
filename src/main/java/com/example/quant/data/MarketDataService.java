@@ -3,6 +3,7 @@ package com.example.quant.data;
 import com.example.quant.config.AppProperties;
 import com.example.quant.model.KlineCandle;
 import com.example.quant.model.StrategyIndicator;
+import com.example.quant.service.NotificationService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.stereotype.Service;
@@ -35,13 +36,16 @@ public class MarketDataService {
     private final BinanceRestClient binanceRestClient;
     private final IndicatorCalculator indicatorCalculator;
     private final AppProperties appProperties;
+    private final NotificationService notificationService;
 
     public MarketDataService(BinanceRestClient binanceRestClient,
                              IndicatorCalculator indicatorCalculator,
-                             AppProperties appProperties) {
+                             AppProperties appProperties,
+                             NotificationService notificationService) {
         this.binanceRestClient = binanceRestClient;
         this.indicatorCalculator = indicatorCalculator;
         this.appProperties = appProperties;
+        this.notificationService = notificationService;
     }
 
     public Map<String, Object> latestTicker(String symbol) {
@@ -51,14 +55,22 @@ public class MarketDataService {
     public List<KlineCandle> latestKlines(String symbol, String interval, int limit) {
         String key = symbol + "_" + interval + "_" + limit;
         return klineCache.get(key, k -> {
-            if (appProperties.getData().isKlineUseWsApi()) {
+            if (!appProperties.getData().isKlineUseWsApi()) {
+                return binanceRestClient.klines(symbol, interval, limit);
+            }
+
+            Exception last = null;
+            for (int attempt = 1; attempt <= 3; attempt++) {
                 try {
                     return binanceRestClient.klinesByWsApi(symbol, interval, limit);
-                } catch (Exception ignored) {
-                    // ws-api 异常时自动降级到 REST。
+                } catch (Exception e) {
+                    last = e;
                 }
             }
-            return binanceRestClient.klines(symbol, interval, limit);
+
+            String msg = "ws-api 获取K线失败，已重试2次: symbol=" + symbol + ", interval=" + interval;
+            notificationService.notify("MARKET_DATA", "K线获取失败", msg);
+            throw new IllegalStateException(msg, last);
         });
     }
 
