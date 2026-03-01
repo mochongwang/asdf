@@ -7,6 +7,9 @@ public record BacktestOrderResult(
         int index,
         double entryPrice,
         double exitPrice,
-        double pnl
+        double pnl,
+        double fee,
+        String closeReason,
+        int barsHeld
 ) {
 }

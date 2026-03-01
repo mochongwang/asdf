@@ -15,14 +15,14 @@
 - ✅ 指标已覆盖：MA / RSI / MACD / ATR / BOLL / KDJ / CCI / VWAP / VOLUME。
 - ⚠️ 默认 `app.trading.simulation=true`（模拟下单）。
 - ⚠️ 已接入 DuckDB 并持久化策略、订单、通知日志、账户、杠杆（其余能力继续迭代）。
-- ⚠️ 回测已升级为历史K线回放（MA交叉 + 止盈止损 + 超时平仓），并引入 HC_ 命名空间缓存隔离。
+- ✅ 回测已升级为历史K线回放（MA交叉 + 止盈止损 + 超时平仓 + 手续费/滑点/延迟Bar模型），并引入 HC_ 命名空间缓存隔离。
 - ✅ 新增 orderbook 深度快照读取（ws-api depth）与前N档查询接口。
 - ✅ 新增 orderbook 订阅管理与定时刷新（策略启用/停用自动订阅与释放）。
 - ✅ 新增 orderbook 增量事件流处理（depth websocket 事件驱动更新本地50档状态）。
 - ✅ 增加 depth 增量序列一致性校验（U/u 断档自动重拉快照）。
 - ✅ 通知日志支持全字段筛选查询（按需求扩展查询参数）。
 - ✅ 新增账户/订单状态同步任务（ws-api 请求式同步到本地表）。
-- ✅ 新增 listenKey 私有用户流 websocket 同步（outboundAccountPosition / executionReport）。
+- ✅ 新增 listenKey 私有用户流 websocket 同步（outboundAccountPosition / executionReport），含失效轮换与重连退避。
 
 ## 3. 关键目录索引
 - 启动入口：`src/main/java/com/example/quant/QuantApplication.java`

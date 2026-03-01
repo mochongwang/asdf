@@ -44,13 +44,22 @@ public class BacktestService {
             throw new IllegalArgumentException("回测区间内K线不足，至少需要40根");
         }
 
+        double feeRate = req.feeRatePctOrDefault() / 100.0;
+        double slippageRate = req.slippagePctOrDefault() / 100.0;
+        int latencyBars = req.latencyBarsOrDefault();
+
         List<BacktestOrderResult> details = new ArrayList<>();
         double totalPnl = 0;
+        double totalFee = 0;
 
         boolean inPosition = false;
         double entryPrice = 0;
         int entryIndex = -1;
         int orderIndex = 1;
+        double equity = 0;
+        double peakEquity = 0;
+        double maxDrawdown = 0;
+        int wins = 0;
 
         double stopLossPct = Math.max(0, strategy.stopLossPct) / 100.0;
         double takeProfitPct = Math.max(0, strategy.takeProfitPct) / 100.0;
@@ -66,10 +75,26 @@ public class BacktestService {
                 boolean timeoutHit = (i - entryIndex) >= DEFAULT_TIMEOUT_BARS;
 
                 if (takeProfitHit || stopLossHit || timeoutHit) {
-                    double exitPrice = takeProfitHit ? tpPrice : (stopLossHit ? slPrice : candle.close());
-                    double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
-                    totalPnl += pnl;
-                    details.add(new BacktestOrderResult(orderIndex++, entryPrice, exitPrice, pnl));
+                    String reason = takeProfitHit ? "TAKE_PROFIT" : (stopLossHit ? "STOP_LOSS" : "TIMEOUT");
+                    double targetExit = takeProfitHit ? tpPrice : (stopLossHit ? slPrice : candle.close());
+                    TradeSettlement settlement = settleTrade(req.testAmount(), entryPrice, targetExit, feeRate, slippageRate);
+                    totalPnl += settlement.netPnl;
+                    totalFee += settlement.fee;
+                    equity += settlement.netPnl;
+                    peakEquity = Math.max(peakEquity, equity);
+                    maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
+                    if (settlement.netPnl > 0) {
+                        wins++;
+                    }
+                    details.add(new BacktestOrderResult(
+                            orderIndex++,
+                            settlement.executedEntry,
+                            settlement.executedExit,
+                            settlement.netPnl,
+                            settlement.fee,
+                            reason,
+                            i - entryIndex
+                    ));
                     inPosition = false;
                     continue;
                 }
@@ -81,26 +106,72 @@ public class BacktestService {
             double slowNow = smaClose(klines, i, 20);
 
             if (!inPosition && fastPrev <= slowPrev && fastNow > slowNow) {
+                int entryExecIndex = Math.min(i + latencyBars, klines.size() - 1);
+                entryPrice = klines.get(entryExecIndex).close();
                 inPosition = true;
-                entryPrice = candle.close();
-                entryIndex = i;
+                entryIndex = entryExecIndex;
             } else if (inPosition && fastPrev >= slowPrev && fastNow < slowNow) {
-                double exitPrice = candle.close();
-                double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
-                totalPnl += pnl;
-                details.add(new BacktestOrderResult(orderIndex++, entryPrice, exitPrice, pnl));
+                int exitExecIndex = Math.min(i + latencyBars, klines.size() - 1);
+                double rawExitPrice = klines.get(exitExecIndex).close();
+                TradeSettlement settlement = settleTrade(req.testAmount(), entryPrice, rawExitPrice, feeRate, slippageRate);
+                totalPnl += settlement.netPnl;
+                totalFee += settlement.fee;
+                equity += settlement.netPnl;
+                peakEquity = Math.max(peakEquity, equity);
+                maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
+                if (settlement.netPnl > 0) {
+                    wins++;
+                }
+                details.add(new BacktestOrderResult(
+                        orderIndex++,
+                        settlement.executedEntry,
+                        settlement.executedExit,
+                        settlement.netPnl,
+                        settlement.fee,
+                        "MA_CROSS_EXIT",
+                        Math.max(1, exitExecIndex - entryIndex)
+                ));
                 inPosition = false;
             }
         }
 
         if (inPosition) {
-            double exitPrice = klines.get(klines.size() - 1).close();
-            double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
-            totalPnl += pnl;
-            details.add(new BacktestOrderResult(orderIndex, entryPrice, exitPrice, pnl));
+            double rawExitPrice = klines.get(klines.size() - 1).close();
+            TradeSettlement settlement = settleTrade(req.testAmount(), entryPrice, rawExitPrice, feeRate, slippageRate);
+            totalPnl += settlement.netPnl;
+            totalFee += settlement.fee;
+            equity += settlement.netPnl;
+            peakEquity = Math.max(peakEquity, equity);
+            maxDrawdown = Math.max(maxDrawdown, peakEquity - equity);
+            if (settlement.netPnl > 0) {
+                wins++;
+            }
+            details.add(new BacktestOrderResult(
+                    orderIndex,
+                    settlement.executedEntry,
+                    settlement.executedExit,
+                    settlement.netPnl,
+                    settlement.fee,
+                    "FORCE_CLOSE",
+                    Math.max(1, klines.size() - 1 - entryIndex)
+            ));
         }
 
-        return new BacktestSummary(strategy.id, details.size(), totalPnl, details);
+        double winRate = details.isEmpty() ? 0 : wins * 1.0 / details.size();
+        return new BacktestSummary(strategy.id, details.size(), totalPnl, totalFee, winRate, maxDrawdown, details);
+    }
+
+    private TradeSettlement settleTrade(double notional,
+                                        double rawEntry,
+                                        double rawExit,
+                                        double feeRate,
+                                        double slippageRate) {
+        double executedEntry = rawEntry * (1 + slippageRate);
+        double executedExit = rawExit * (1 - slippageRate);
+        double grossPnl = notional * ((executedExit - executedEntry) / executedEntry);
+        double fee = notional * feeRate * 2;
+        double netPnl = grossPnl - fee;
+        return new TradeSettlement(executedEntry, executedExit, fee, netPnl);
     }
 
     private double smaClose(List<KlineCandle> klines, int endIndex, int period) {
@@ -113,5 +184,8 @@ public class BacktestService {
             sum += klines.get(i).close();
         }
         return sum / period;
+    }
+
+    private record TradeSettlement(double executedEntry, double executedExit, double fee, double netPnl) {
     }
 }

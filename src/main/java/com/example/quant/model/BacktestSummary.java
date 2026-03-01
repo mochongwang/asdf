@@ -9,6 +9,10 @@ public record BacktestSummary(
         String strategyId,
         int orderCount,
         double totalPnl,
+        double totalFee,
+        double winRate,
+        double maxDrawdown,
         List<BacktestOrderResult> details
 ) {
 }
+
