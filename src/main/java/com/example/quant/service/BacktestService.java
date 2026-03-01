@@ -1,11 +1,11 @@
 package com.example.quant.service;
 
+import com.example.quant.data.MarketDataService;
 import com.example.quant.model.BacktestOrderResult;
 import com.example.quant.model.BacktestRequest;
 import com.example.quant.model.BacktestSummary;
 import com.example.quant.model.KlineCandle;
 import com.example.quant.model.StrategyEntity;
-import com.example.quant.data.MarketDataService;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -13,10 +13,12 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * 回测服务（模拟实现）。
+ * 回测服务（基于历史K线回放 + 止盈止损/均线信号）。
  */
 @Service
 public class BacktestService {
+
+    private static final int DEFAULT_TIMEOUT_BARS = 20;
 
     private final MarketDataService marketDataService;
 
@@ -47,8 +49,32 @@ public class BacktestService {
 
         boolean inPosition = false;
         double entryPrice = 0;
+        int entryIndex = -1;
         int orderIndex = 1;
+
+        double stopLossPct = Math.max(0, strategy.stopLossPct) / 100.0;
+        double takeProfitPct = Math.max(0, strategy.takeProfitPct) / 100.0;
+
         for (int i = 35; i < klines.size(); i++) {
+            KlineCandle candle = klines.get(i);
+
+            if (inPosition) {
+                double tpPrice = entryPrice * (1 + takeProfitPct);
+                double slPrice = entryPrice * (1 - stopLossPct);
+                boolean takeProfitHit = takeProfitPct > 0 && candle.high() >= tpPrice;
+                boolean stopLossHit = stopLossPct > 0 && candle.low() <= slPrice;
+                boolean timeoutHit = (i - entryIndex) >= DEFAULT_TIMEOUT_BARS;
+
+                if (takeProfitHit || stopLossHit || timeoutHit) {
+                    double exitPrice = takeProfitHit ? tpPrice : (stopLossHit ? slPrice : candle.close());
+                    double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
+                    totalPnl += pnl;
+                    details.add(new BacktestOrderResult(orderIndex++, entryPrice, exitPrice, pnl));
+                    inPosition = false;
+                    continue;
+                }
+            }
+
             double fastPrev = smaClose(klines, i - 1, 5);
             double fastNow = smaClose(klines, i, 5);
             double slowPrev = smaClose(klines, i - 1, 20);
@@ -56,9 +82,10 @@ public class BacktestService {
 
             if (!inPosition && fastPrev <= slowPrev && fastNow > slowNow) {
                 inPosition = true;
-                entryPrice = klines.get(i).close();
+                entryPrice = candle.close();
+                entryIndex = i;
             } else if (inPosition && fastPrev >= slowPrev && fastNow < slowNow) {
-                double exitPrice = klines.get(i).close();
+                double exitPrice = candle.close();
                 double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
                 totalPnl += pnl;
                 details.add(new BacktestOrderResult(orderIndex++, entryPrice, exitPrice, pnl));

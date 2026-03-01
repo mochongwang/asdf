@@ -136,6 +136,49 @@ public class OrderService {
         }
     }
 
+
+    public void syncExecutionReport(String symbol,
+                                    String exchangeOrderId,
+                                    String status,
+                                    String side,
+                                    double executedQty,
+                                    double price) {
+        if (exchangeOrderId == null || exchangeOrderId.isBlank()) {
+            return;
+        }
+        String normalizedStatus = (status == null || status.isBlank()) ? "UNKNOWN" : status;
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE orders
+                SET status=?, quantity=?
+                WHERE exchange_order_id=?
+                """,
+                normalizedStatus,
+                executedQty > 0 ? executedQty : 0,
+                exchangeOrderId
+        );
+        if (updated == 0 && symbol != null && !symbol.isBlank()) {
+            String mappedSide = "BUY".equalsIgnoreCase(side) ? OrderSide.OPEN_LONG.name() : OrderSide.CLOSE_LONG.name();
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO orders(local_order_id,exchange_order_id,strategy_id,symbol,side,order_type,amount_usdt,quantity,status,created_at,remark)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    "STREAM-" + exchangeOrderId,
+                    exchangeOrderId,
+                    "EXCHANGE_STREAM",
+                    symbol,
+                    mappedSide,
+                    OrderType.MARKET.name(),
+                    0d,
+                    executedQty,
+                    normalizedStatus,
+                    Instant.now().toEpochMilli(),
+                    "用户流 executionReport 同步"
+            );
+        }
+    }
+
     public List<OrderRecord> query(OrderQuery query) {
         int page = query.page() == null ? 1 : Math.max(query.page(), 1);
         int size = query.size() == null ? 20 : Math.max(query.size(), 1);
