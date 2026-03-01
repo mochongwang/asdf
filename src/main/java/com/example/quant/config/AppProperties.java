@@ -30,14 +30,21 @@ public class AppProperties {
     public static class Trading {
         /** 是否模拟下单。 */
         private boolean simulation = true;
+        /** 币安 API KEY。 */
+        private String apiKey = "";
+        /** 币安 API SECRET。 */
+        private String apiSecret = "";
+
         public boolean isSimulation() { return simulation; }
         public void setSimulation(boolean simulation) { this.simulation = simulation; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getApiSecret() { return apiSecret; }
+        public void setApiSecret(String apiSecret) { this.apiSecret = apiSecret; }
     }
 
     public static class Notify {
-        /** 企业微信 webhook 地址。 */
         private String wechatWebhook = "";
-        /** 是否启用 webhook 推送。 */
         private boolean enabled = false;
         public String getWechatWebhook() { return wechatWebhook; }
         public void setWechatWebhook(String wechatWebhook) { this.wechatWebhook = wechatWebhook; }
@@ -46,9 +53,7 @@ public class AppProperties {
     }
 
     public static class Scheduler {
-        /** 自动触发周期毫秒。 */
         private long triggerIntervalMs = 30_000;
-        /** 自动轮询是否开启。 */
         private boolean enabled = true;
         public long getTriggerIntervalMs() { return triggerIntervalMs; }
         public void setTriggerIntervalMs(long triggerIntervalMs) { this.triggerIntervalMs = triggerIntervalMs; }

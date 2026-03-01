@@ -83,3 +83,11 @@ mvn spring-boot:run
 3. 接入 K线 websocket + 历史K线预加载 + 指标缓存
 4. 对接真实下单与风控
 5. 配置企业微信 webhook 与告警策略
+
+
+## 本次补齐（按需求文档）
+
+- 取数据层：已对接币安 `ticker` + `klines` REST。
+- 指标计算：新增基础指标计算器，支持 MA、RSI（并预留其他指标扩展）。
+- 下单层：新增真实币安下单客户端（签名请求），并通过 `app.trading.simulation` 开关控制模拟/真实模式。
+

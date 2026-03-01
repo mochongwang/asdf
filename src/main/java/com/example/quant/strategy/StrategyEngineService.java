@@ -72,8 +72,12 @@ public class StrategyEngineService {
                 entity.indicators
         );
 
+        String interval = entity.triggerPeriod.code();
         Map<String, Object> ticker = marketDataService.latestTicker(entity.symbol);
-        StrategyRuntimeContext context = new StrategyRuntimeContext(entity.symbol, entity.triggerPeriod.code(), ticker);
+        List<com.example.quant.model.KlineCandle> klines = marketDataService.latestKlines(entity.symbol, interval, 200);
+        Map<String, Double> indicators = marketDataService.calculateIndicators(entity.symbol, interval, entity.indicators);
+
+        StrategyRuntimeContext context = new StrategyRuntimeContext(entity.symbol, interval, ticker, klines, indicators);
 
         Optional<PlaceOrderCommand> cmd = template.evaluate(definition, context);
         if (cmd.isEmpty()) {
@@ -85,11 +89,6 @@ public class StrategyEngineService {
         return "已提交订单: " + localOrderId;
     }
 
-    /**
-     * 自动调度使用：轮询触发所有启用策略。
-     *
-     * @return 执行结果集合
-     */
     public List<String> triggerAllActive() {
         List<String> results = new ArrayList<>();
         for (StrategyEntity entity : activeStrategies.values()) {

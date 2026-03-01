@@ -1,5 +1,7 @@
 package com.example.quant.order;
 
+import com.example.quant.config.AppProperties;
+import com.example.quant.data.BinanceRestClient;
 import com.example.quant.model.OrderQuery;
 import com.example.quant.model.OrderSide;
 import com.example.quant.model.OrderType;
@@ -21,6 +23,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class OrderService {
 
     private final Map<String, OrderRecord> orderStore = new ConcurrentHashMap<>();
+    private final AppProperties properties;
+    private final BinanceRestClient marketClient;
+    private final BinanceTradeClient binanceTradeClient;
+
+    public OrderService(AppProperties properties,
+                        BinanceRestClient marketClient,
+                        BinanceTradeClient binanceTradeClient) {
+        this.properties = properties;
+        this.marketClient = marketClient;
+        this.binanceTradeClient = binanceTradeClient;
+    }
 
     public String placeOrder(PlaceOrderCommand cmd) {
         String localOrderId = UUID.randomUUID().toString();
@@ -31,9 +44,21 @@ public class OrderService {
         record.side = cmd.side();
         record.orderType = cmd.orderType();
         record.amountUsdt = cmd.amountUsdt();
-        record.status = "已提交";
         record.createdAt = Instant.now();
         record.remark = cmd.remark();
+
+        double quantity = calculateQuantity(cmd.symbol(), cmd.amountUsdt());
+        record.quantity = quantity;
+
+        if (properties.getTrading().isSimulation()) {
+            record.exchangeOrderId = "SIM-" + localOrderId.substring(0, 8);
+            record.status = "模拟已提交";
+        } else {
+            String exchangeOrderId = binanceTradeClient.placeOrder(cmd, quantity);
+            record.exchangeOrderId = exchangeOrderId;
+            record.status = "真实已提交";
+        }
+
         orderStore.put(localOrderId, record);
         return localOrderId;
     }
@@ -42,11 +67,13 @@ public class OrderService {
         String localOrderId = UUID.randomUUID().toString();
         OrderRecord closeRecord = new OrderRecord();
         closeRecord.localOrderId = localOrderId;
+        closeRecord.exchangeOrderId = "FORCE-" + localOrderId.substring(0, 8);
         closeRecord.strategyId = "SYSTEM";
         closeRecord.symbol = symbol;
         closeRecord.side = OrderSide.CLOSE_LONG;
         closeRecord.orderType = OrderType.MARKET;
         closeRecord.amountUsdt = 0;
+        closeRecord.quantity = 0;
         closeRecord.status = "强平提交";
         closeRecord.createdAt = Instant.now();
         closeRecord.remark = remark;
@@ -70,5 +97,18 @@ public class OrderService {
 
     public List<OrderRecord> listOrders() {
         return new ArrayList<>(orderStore.values());
+    }
+
+    private double calculateQuantity(String symbol, double amountUsdt) {
+        Map<String, Object> ticker = marketClient.tickerPrice(symbol);
+        Object priceObj = ticker.get("price");
+        if (priceObj == null) {
+            throw new IllegalArgumentException("无法获取最新价格，不能计算下单数量");
+        }
+        double price = Double.parseDouble(String.valueOf(priceObj));
+        if (price <= 0) {
+            throw new IllegalArgumentException("价格异常: " + price);
+        }
+        return amountUsdt / price;
     }
 }

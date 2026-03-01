@@ -8,6 +8,8 @@ app:
     password: 123456
   trading:
     simulation: true
+    api-key: ""
+    api-secret: ""
   notify:
     enabled: false
     wechat-webhook: ""
