@@ -166,9 +166,26 @@ public class OrderBookSubscriptionService {
             return;
         }
 
+        long firstUpdateId = parseLong(payload.get("U"));
         long finalUpdateId = parseLong(payload.get("u"));
+
         if (finalUpdateId <= state.lastUpdateId) {
             return;
+        }
+
+        // Binance depth 一致性校验：必须满足 U <= lastUpdateId+1 <= u
+        if (!(firstUpdateId <= state.lastUpdateId + 1 && finalUpdateId >= state.lastUpdateId + 1)) {
+            log.warn("orderbook gap detected for {}, resync snapshot: local={}, eventU={}, eventu={}",
+                    symbol, state.lastUpdateId, firstUpdateId, finalUpdateId);
+            initFromSnapshot(symbol);
+            state = states.get(symbol);
+            if (state == null) {
+                return;
+            }
+            if (!(firstUpdateId <= state.lastUpdateId + 1 && finalUpdateId >= state.lastUpdateId + 1)) {
+                // 若重载后该事件仍不连续，跳过等待下个事件
+                return;
+            }
         }
 
         Object bidsObj = payload.get("b");
