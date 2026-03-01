@@ -101,6 +101,41 @@ public class OrderService {
         insertOrder(closeRecord);
     }
 
+
+    public void syncExchangeOrder(String exchangeOrderId, String symbol, String status) {
+        if (exchangeOrderId == null || exchangeOrderId.isBlank()) {
+            return;
+        }
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE orders
+                SET status=?
+                WHERE exchange_order_id=?
+                """,
+                status,
+                exchangeOrderId
+        );
+        if (updated == 0 && symbol != null && !symbol.isBlank()) {
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO orders(local_order_id,exchange_order_id,strategy_id,symbol,side,order_type,amount_usdt,quantity,status,created_at,remark)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    "SYNC-" + exchangeOrderId,
+                    exchangeOrderId,
+                    "EXCHANGE_SYNC",
+                    symbol,
+                    OrderSide.CLOSE_LONG.name(),
+                    OrderType.MARKET.name(),
+                    0d,
+                    0d,
+                    status,
+                    Instant.now().toEpochMilli(),
+                    "交易所订单状态同步"
+            );
+        }
+    }
+
     public List<OrderRecord> query(OrderQuery query) {
         int page = query.page() == null ? 1 : Math.max(query.page(), 1);
         int size = query.size() == null ? 20 : Math.max(query.size(), 1);

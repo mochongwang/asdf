@@ -29,6 +29,35 @@ public class AccountService {
         );
     }
 
+
+    public void upsertSnapshot(String apikey, double balance, double available, double frozen, long updatedAtMs) {
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE accounts
+                SET balance=?, available_balance=?, frozen_balance=?, updated_at=?
+                WHERE apikey=?
+                """,
+                balance,
+                available,
+                frozen,
+                updatedAtMs,
+                apikey
+        );
+        if (updated == 0) {
+            jdbcTemplate.update(
+                    """
+                    INSERT INTO accounts(apikey,balance,available_balance,frozen_balance,updated_at)
+                    VALUES (?,?,?,?,?)
+                    """,
+                    apikey,
+                    balance,
+                    available,
+                    frozen,
+                    updatedAtMs
+            );
+        }
+    }
+
     private void bootstrapIfEmpty() {
         Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM accounts", Integer.class);
         if (count != null && count > 0) {

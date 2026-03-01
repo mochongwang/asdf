@@ -19,6 +19,7 @@
 - ✅ 新增 orderbook 深度快照读取（ws-api depth）与前N档查询接口。
 - ✅ 新增 orderbook 订阅管理与定时刷新（策略启用/停用自动订阅与释放）。
 - ✅ 通知日志支持全字段筛选查询（按需求扩展查询参数）。
+- ✅ 新增账户/订单状态同步任务（ws-api 请求式同步到本地表）。
 
 ## 3. 关键目录索引
 - 启动入口：`src/main/java/com/example/quant/QuantApplication.java`

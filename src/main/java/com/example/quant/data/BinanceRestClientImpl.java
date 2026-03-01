@@ -110,6 +110,18 @@ public class BinanceRestClientImpl implements BinanceRestClient {
         return 5000;
     }
 
+
+    @Override
+    public Map<String, Object> wsApiCall(String method, Map<String, Object> params) {
+        return guard.execute(() -> {
+            try {
+                return callWsApi(method, params == null ? Map.of() : params);
+            } catch (Exception e) {
+                throw new IllegalStateException("WebSocket API 通用请求失败: " + method, e);
+            }
+        });
+    }
+
     private Map<String, Object> callWsApi(String method, Map<String, Object> params) throws Exception {
         String reqId = UUID.randomUUID().toString();
         String payload = objectMapper.writeValueAsString(Map.of(

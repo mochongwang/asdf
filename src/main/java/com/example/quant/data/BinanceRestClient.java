@@ -22,4 +22,9 @@ public interface BinanceRestClient {
      * WebSocket API 深度（orderbook）快照。
      */
     Map<String, Object> depth(String symbol, int limit);
+
+    /**
+     * 通用 ws-api 请求。
+     */
+    Map<String, Object> wsApiCall(String method, Map<String, Object> params);
 }
