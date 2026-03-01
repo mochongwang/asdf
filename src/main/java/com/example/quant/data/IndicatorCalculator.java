@@ -61,6 +61,26 @@ public class IndicatorCalculator {
     }
 
     /**
+     * 从 JSON 参数读取字符串。
+     */
+    public String readStringParam(String json, String key, String defaultValue) {
+        try {
+            if (json == null || json.isBlank()) {
+                return defaultValue;
+            }
+            Map<?, ?> map = objectMapper.readValue(json, Map.class);
+            Object v = map.get(key);
+            if (v == null) {
+                return defaultValue;
+            }
+            String text = String.valueOf(v).trim();
+            return text.isBlank() ? defaultValue : text;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    /**
      * 按指标定义批量计算（核心指标使用 TA-Lib）。
      */
     public Map<String, Double> calculateAll(List<KlineCandle> klines, List<StrategyIndicator> indicators) {
@@ -94,6 +114,24 @@ public class IndicatorCalculator {
                 case ATR -> {
                     int period = readIntParam(indicator.paramsJson(), "period", 14);
                     value = lastAtr(high, low, close, period);
+                }
+                case BOLL -> {
+                    int period = readIntParam(indicator.paramsJson(), "period", 20);
+                    double devUp = readDoubleParam(indicator.paramsJson(), "devUp", 2.0);
+                    double devDown = readDoubleParam(indicator.paramsJson(), "devDown", 2.0);
+                    String line = readStringParam(indicator.paramsJson(), "line", "middle");
+                    value = lastBoll(close, period, devUp, devDown, line);
+                }
+                case KDJ -> {
+                    int fastK = readIntParam(indicator.paramsJson(), "fastK", 9);
+                    int slowK = readIntParam(indicator.paramsJson(), "slowK", 3);
+                    int slowD = readIntParam(indicator.paramsJson(), "slowD", 3);
+                    String line = readStringParam(indicator.paramsJson(), "line", "j");
+                    value = lastKdj(high, low, close, fastK, slowK, slowD, line);
+                }
+                case CCI -> {
+                    int period = readIntParam(indicator.paramsJson(), "period", 14);
+                    value = lastCci(high, low, close, period);
                 }
                 case VWAP -> value = lastVwap(close, volume);
                 case VOLUME -> value = volume[volume.length - 1];
@@ -171,6 +209,93 @@ public class IndicatorCalculator {
         MInteger outNbElement = new MInteger();
         double[] out = new double[close.length];
         RetCode code = ta.atr(0, close.length - 1, high, low, close, period, outBegIdx, outNbElement, out);
+        if (code != RetCode.Success || outNbElement.value <= 0) {
+            return Double.NaN;
+        }
+        return out[outBegIdx.value + outNbElement.value - 1];
+    }
+
+    private double lastBoll(double[] close, int period, double devUp, double devDown, String line) {
+        if (close.length < period || period <= 0) {
+            return Double.NaN;
+        }
+        MInteger outBegIdx = new MInteger();
+        MInteger outNbElement = new MInteger();
+        double[] upper = new double[close.length];
+        double[] middle = new double[close.length];
+        double[] lower = new double[close.length];
+        RetCode code = ta.bbands(
+                0,
+                close.length - 1,
+                close,
+                period,
+                devUp,
+                devDown,
+                MAType.Sma,
+                outBegIdx,
+                outNbElement,
+                upper,
+                middle,
+                lower
+        );
+        if (code != RetCode.Success || outNbElement.value <= 0) {
+            return Double.NaN;
+        }
+        int idx = outBegIdx.value + outNbElement.value - 1;
+        String key = line == null ? "middle" : line.toLowerCase();
+        return switch (key) {
+            case "upper", "up" -> upper[idx];
+            case "lower", "down" -> lower[idx];
+            default -> middle[idx];
+        };
+    }
+
+    private double lastKdj(double[] high, double[] low, double[] close, int fastK, int slowK, int slowD, String line) {
+        if (high.length != low.length || low.length != close.length || close.length < fastK || fastK <= 0) {
+            return Double.NaN;
+        }
+        MInteger outBegIdx = new MInteger();
+        MInteger outNbElement = new MInteger();
+        double[] k = new double[close.length];
+        double[] d = new double[close.length];
+        RetCode code = ta.stoch(
+                0,
+                close.length - 1,
+                high,
+                low,
+                close,
+                fastK,
+                slowK,
+                MAType.Sma,
+                slowD,
+                MAType.Sma,
+                outBegIdx,
+                outNbElement,
+                k,
+                d
+        );
+        if (code != RetCode.Success || outNbElement.value <= 0) {
+            return Double.NaN;
+        }
+        int idx = outBegIdx.value + outNbElement.value - 1;
+        double kVal = k[idx];
+        double dVal = d[idx];
+        String key = line == null ? "j" : line.toLowerCase();
+        return switch (key) {
+            case "k" -> kVal;
+            case "d" -> dVal;
+            default -> 3 * kVal - 2 * dVal;
+        };
+    }
+
+    private double lastCci(double[] high, double[] low, double[] close, int period) {
+        if (high.length != low.length || low.length != close.length || close.length < period || period <= 0) {
+            return Double.NaN;
+        }
+        MInteger outBegIdx = new MInteger();
+        MInteger outNbElement = new MInteger();
+        double[] out = new double[close.length];
+        RetCode code = ta.cci(0, close.length - 1, high, low, close, period, outBegIdx, outNbElement, out);
         if (code != RetCode.Success || outNbElement.value <= 0) {
             return Double.NaN;
         }

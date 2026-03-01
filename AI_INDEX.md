@@ -12,8 +12,10 @@
 - ✅ **下单层只用 REST API**：真实模式走签名下单。
 - ✅ Binance 对接失败策略：**重试1次**，仍失败则**通知并抛错**。
 - ✅ 指标计算统一使用 **TA-Lib Core**（`com.tictactec.ta.lib.Core`）。
+- ✅ 指标已覆盖：MA / RSI / MACD / ATR / BOLL / KDJ / CCI / VWAP / VOLUME。
 - ⚠️ 默认 `app.trading.simulation=true`（模拟下单）。
 - ⚠️ 仍为内存存储（未接 DuckDB）。
+- ⚠️ 回测已升级为基于历史K线的MA交叉模拟（非完整撮合引擎）。
 
 ## 3. 关键目录索引
 - 启动入口：`src/main/java/com/example/quant/QuantApplication.java`
@@ -62,4 +64,3 @@
 你下次可直接贴：
 
 > 请先读取 `AI_INDEX.md` 和 `docs/运行步骤与代码映射.md`，然后按当前实现（ws-api取数据、REST下单、失败重试1次并通知）修改以下问题：...
-

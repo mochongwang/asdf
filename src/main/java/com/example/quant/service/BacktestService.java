@@ -3,13 +3,14 @@ package com.example.quant.service;
 import com.example.quant.model.BacktestOrderResult;
 import com.example.quant.model.BacktestRequest;
 import com.example.quant.model.BacktestSummary;
+import com.example.quant.model.KlineCandle;
 import com.example.quant.model.StrategyEntity;
+import com.example.quant.data.MarketDataService;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 回测服务（模拟实现）。
@@ -17,25 +18,70 @@ import java.util.concurrent.ThreadLocalRandom;
 @Service
 public class BacktestService {
 
+    private final MarketDataService marketDataService;
+
+    public BacktestService(MarketDataService marketDataService) {
+        this.marketDataService = marketDataService;
+    }
+
     public BacktestSummary runBacktest(StrategyEntity strategy, BacktestRequest req) {
         if (req.endTime().isBefore(req.startTime()) || req.endTime().equals(req.startTime())) {
             throw new IllegalArgumentException("回测结束时间必须晚于开始时间");
         }
 
-        long minutes = Duration.between(req.startTime(), req.endTime()).toMinutes();
-        int orderCount = (int) Math.max(1, Math.min(200, minutes / 30));
+        List<KlineCandle> source = marketDataService.latestKlines(strategy.symbol, strategy.triggerPeriod.code(), 500);
+        List<KlineCandle> klines = source.stream()
+                .filter(k -> k.openTime() >= req.startTime().toEpochMilli() && k.closeTime() <= req.endTime().toEpochMilli())
+                .sorted(Comparator.comparingLong(KlineCandle::openTime))
+                .toList();
+
+        if (klines.size() < 40) {
+            throw new IllegalArgumentException("回测区间内K线不足，至少需要40根");
+        }
 
         List<BacktestOrderResult> details = new ArrayList<>();
         double totalPnl = 0;
-        for (int i = 1; i <= orderCount; i++) {
-            double entry = 100 + ThreadLocalRandom.current().nextDouble(0, 200);
-            double pct = ThreadLocalRandom.current().nextDouble(-0.03, 0.05);
-            double exit = entry * (1 + pct);
-            double pnl = req.testAmount() * pct;
-            totalPnl += pnl;
-            details.add(new BacktestOrderResult(i, entry, exit, pnl));
+
+        boolean inPosition = false;
+        double entryPrice = 0;
+        int orderIndex = 1;
+        for (int i = 35; i < klines.size(); i++) {
+            double fastPrev = smaClose(klines, i - 1, 5);
+            double fastNow = smaClose(klines, i, 5);
+            double slowPrev = smaClose(klines, i - 1, 20);
+            double slowNow = smaClose(klines, i, 20);
+
+            if (!inPosition && fastPrev <= slowPrev && fastNow > slowNow) {
+                inPosition = true;
+                entryPrice = klines.get(i).close();
+            } else if (inPosition && fastPrev >= slowPrev && fastNow < slowNow) {
+                double exitPrice = klines.get(i).close();
+                double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
+                totalPnl += pnl;
+                details.add(new BacktestOrderResult(orderIndex++, entryPrice, exitPrice, pnl));
+                inPosition = false;
+            }
         }
 
-        return new BacktestSummary(strategy.id, orderCount, totalPnl, details);
+        if (inPosition) {
+            double exitPrice = klines.get(klines.size() - 1).close();
+            double pnl = req.testAmount() * ((exitPrice - entryPrice) / entryPrice);
+            totalPnl += pnl;
+            details.add(new BacktestOrderResult(orderIndex, entryPrice, exitPrice, pnl));
+        }
+
+        return new BacktestSummary(strategy.id, details.size(), totalPnl, details);
+    }
+
+    private double smaClose(List<KlineCandle> klines, int endIndex, int period) {
+        int start = endIndex - period + 1;
+        if (start < 0) {
+            return Double.NaN;
+        }
+        double sum = 0;
+        for (int i = start; i <= endIndex; i++) {
+            sum += klines.get(i).close();
+        }
+        return sum / period;
     }
 }
