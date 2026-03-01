@@ -2,41 +2,66 @@ package com.example.quant.service;
 
 import com.example.quant.model.NotificationLog;
 import com.example.quant.notify.WeComWebhookClient;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 通知服务。
+ * 通知服务（日志持久化到 DuckDB）。
  */
 @Service
 public class NotificationService {
-    private final AtomicLong sequence = new AtomicLong(1);
-    private final List<NotificationLog> logs = new CopyOnWriteArrayList<>();
-    private final WeComWebhookClient webhookClient;
 
-    public NotificationService(WeComWebhookClient webhookClient) {
+    private final WeComWebhookClient webhookClient;
+    private final JdbcTemplate jdbcTemplate;
+
+    public NotificationService(WeComWebhookClient webhookClient, JdbcTemplate jdbcTemplate) {
         this.webhookClient = webhookClient;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public void notify(String eventType, String title, String content) {
         NotificationLog log = new NotificationLog();
-        log.id = sequence.getAndIncrement();
         log.eventType = eventType;
         log.title = title;
         log.content = content;
         log.sentAt = Instant.now();
         log.createdAt = Instant.now();
-        logs.add(log);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO notification_logs(event_type,title,content,sent_at,created_at)
+                VALUES (?,?,?,?,?)
+                """,
+                log.eventType,
+                log.title,
+                log.content,
+                log.sentAt.toEpochMilli(),
+                log.createdAt.toEpochMilli()
+        );
 
         webhookClient.sendText("[" + eventType + "] " + title + "\n" + content);
     }
 
     public List<NotificationLog> list() {
-        return new ArrayList<>(logs);
+        return jdbcTemplate.query(
+                "SELECT id,event_type,title,content,sent_at,created_at FROM notification_logs ORDER BY created_at DESC",
+                this::mapRow
+        );
+    }
+
+    private NotificationLog mapRow(ResultSet rs, int rowNum) throws SQLException {
+        NotificationLog log = new NotificationLog();
+        log.id = rs.getLong("id");
+        log.eventType = rs.getString("event_type");
+        log.title = rs.getString("title");
+        log.content = rs.getString("content");
+        log.sentAt = Instant.ofEpochMilli(rs.getLong("sent_at"));
+        log.createdAt = Instant.ofEpochMilli(rs.getLong("created_at"));
+        return log;
     }
 }

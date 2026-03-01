@@ -14,7 +14,7 @@
 - ✅ 指标计算统一使用 **TA-Lib Core**（`com.tictactec.ta.lib.Core`）。
 - ✅ 指标已覆盖：MA / RSI / MACD / ATR / BOLL / KDJ / CCI / VWAP / VOLUME。
 - ⚠️ 默认 `app.trading.simulation=true`（模拟下单）。
-- ⚠️ 已接入 DuckDB 并持久化策略与订单主数据（通知/账户等仍在内存实现）。
+- ⚠️ 已接入 DuckDB 并持久化策略、订单、通知日志（账户等仍在内存实现）。
 - ⚠️ 回测已升级为基于历史K线的MA交叉模拟（非完整撮合引擎）。
 - ✅ 新增 orderbook 深度快照读取（ws-api depth）与前N档查询接口。
 - ✅ 新增 orderbook 订阅管理与定时刷新（策略启用/停用自动订阅与释放）。

@@ -54,5 +54,16 @@ public class DatabaseSchemaInitializer implements ApplicationRunner {
                     remark VARCHAR
                 )
                 """);
+
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS notification_logs (
+                    id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+                    event_type VARCHAR,
+                    title VARCHAR,
+                    content VARCHAR,
+                    sent_at BIGINT,
+                    created_at BIGINT
+                )
+                """);
     }
 }
