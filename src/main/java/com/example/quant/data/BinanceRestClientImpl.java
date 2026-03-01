@@ -4,7 +4,6 @@ import com.example.quant.model.KlineCandle;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,80 +17,50 @@ import java.util.concurrent.CompletionStage;
 
 /**
  * 币安客户端实现。
+ *
+ * <p>取数据只使用 WebSocket API（ws-api）。</p>
  */
 @Component
 public class BinanceRestClientImpl implements BinanceRestClient {
 
-    private final RestClient restClient;
     private final ApiConcurrencyGuard guard;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public BinanceRestClientImpl(ApiConcurrencyGuard guard) {
         this.guard = guard;
-        this.restClient = RestClient.builder()
-                .baseUrl("https://api.binance.com")
-                .build();
     }
 
     @Override
     public Map<String, Object> tickerPrice(String symbol) {
-        return guard.execute(() -> restClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v3/ticker/price")
-                        .queryParam("symbol", symbol)
-                        .build())
-                .retrieve()
-                .body(Map.class));
+        return guard.execute(() -> {
+            try {
+                Map<String, Object> resp = callWsApi("ticker.price", Map.of("symbol", symbol));
+                Object result = resp.get("result");
+                if (!(result instanceof Map<?, ?> map)) {
+                    throw new IllegalStateException("ws-api ticker.price 返回格式异常");
+                }
+                return (Map<String, Object>) map;
+            } catch (Exception e) {
+                throw new IllegalStateException("WebSocket API 获取ticker失败", e);
+            }
+        });
     }
 
     @Override
     public List<KlineCandle> klines(String symbol, String interval, int limit) {
-        List<List<Object>> rows = guard.execute(() -> restClient.get()
-                .uri(uriBuilder -> uriBuilder.path("/api/v3/klines")
-                        .queryParam("symbol", symbol)
-                        .queryParam("interval", interval)
-                        .queryParam("limit", Math.max(1, Math.min(limit, 1000)))
-                        .build())
-                .retrieve()
-                .body(List.class));
-        return rowsToCandles(rows);
+        return klinesByWsApi(symbol, interval, limit);
     }
 
     @Override
     public List<KlineCandle> klinesByWsApi(String symbol, String interval, int limit) {
         return guard.execute(() -> {
             try {
-                String reqId = UUID.randomUUID().toString();
-                String payload = objectMapper.writeValueAsString(Map.of(
-                        "id", reqId,
-                        "method", "klines",
-                        "params", Map.of(
-                                "symbol", symbol,
-                                "interval", interval,
-                                "limit", Math.max(1, Math.min(limit, 1000))
-                        )
+                Map<String, Object> resp = callWsApi("klines", Map.of(
+                        "symbol", symbol,
+                        "interval", interval,
+                        "limit", Math.max(1, Math.min(limit, 1000))
                 ));
-
-                CompletableFuture<String> responseFuture = new CompletableFuture<>();
-                WebSocket ws = httpClient.newWebSocketBuilder()
-                        .buildAsync(URI.create("wss://ws-api.binance.com:443/ws-api/v3"), new WebSocket.Listener() {
-                            @Override
-                            public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-                                responseFuture.complete(data.toString());
-                                return WebSocket.Listener.super.onText(webSocket, data, last);
-                            }
-
-                            @Override
-                            public void onError(WebSocket webSocket, Throwable error) {
-                                responseFuture.completeExceptionally(error);
-                            }
-                        }).join();
-
-                ws.sendText(payload, true).join();
-                String text = responseFuture.join();
-                ws.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
-
-                Map<String, Object> resp = objectMapper.readValue(text, new TypeReference<>() {});
                 Object resultObj = resp.get("result");
                 if (!(resultObj instanceof List<?> list)) {
                     return List.of();
@@ -108,6 +77,36 @@ public class BinanceRestClientImpl implements BinanceRestClient {
                 throw new IllegalStateException("WebSocket API 获取K线失败", e);
             }
         });
+    }
+
+    private Map<String, Object> callWsApi(String method, Map<String, Object> params) throws Exception {
+        String reqId = UUID.randomUUID().toString();
+        String payload = objectMapper.writeValueAsString(Map.of(
+                "id", reqId,
+                "method", method,
+                "params", params
+        ));
+
+        CompletableFuture<String> responseFuture = new CompletableFuture<>();
+        WebSocket ws = httpClient.newWebSocketBuilder()
+                .buildAsync(URI.create("wss://ws-api.binance.com:443/ws-api/v3"), new WebSocket.Listener() {
+                    @Override
+                    public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                        responseFuture.complete(data.toString());
+                        return WebSocket.Listener.super.onText(webSocket, data, last);
+                    }
+
+                    @Override
+                    public void onError(WebSocket webSocket, Throwable error) {
+                        responseFuture.completeExceptionally(error);
+                    }
+                }).join();
+
+        ws.sendText(payload, true).join();
+        String text = responseFuture.join();
+        ws.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
+
+        return objectMapper.readValue(text, new TypeReference<>() {});
     }
 
     private List<KlineCandle> rowsToCandles(List<List<Object>> rows) {

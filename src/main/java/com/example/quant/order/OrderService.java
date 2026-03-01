@@ -6,6 +6,7 @@ import com.example.quant.model.OrderQuery;
 import com.example.quant.model.OrderSide;
 import com.example.quant.model.OrderType;
 import com.example.quant.model.PlaceOrderCommand;
+import com.example.quant.service.NotificationService;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -17,7 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 下单层服务。
+ * 下单层服务（只用 REST API）。
  */
 @Service
 public class OrderService {
@@ -26,13 +27,16 @@ public class OrderService {
     private final AppProperties properties;
     private final BinanceRestClient marketClient;
     private final BinanceTradeClient binanceTradeClient;
+    private final NotificationService notificationService;
 
     public OrderService(AppProperties properties,
                         BinanceRestClient marketClient,
-                        BinanceTradeClient binanceTradeClient) {
+                        BinanceTradeClient binanceTradeClient,
+                        NotificationService notificationService) {
         this.properties = properties;
         this.marketClient = marketClient;
         this.binanceTradeClient = binanceTradeClient;
+        this.notificationService = notificationService;
     }
 
     public String placeOrder(PlaceOrderCommand cmd) {
@@ -54,7 +58,22 @@ public class OrderService {
             record.exchangeOrderId = "SIM-" + localOrderId.substring(0, 8);
             record.status = "模拟已提交";
         } else {
-            String exchangeOrderId = binanceTradeClient.placeOrder(cmd, quantity);
+            Exception first = null;
+            String exchangeOrderId = null;
+            for (int attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    exchangeOrderId = binanceTradeClient.placeOrder(cmd, quantity);
+                    break;
+                } catch (Exception e) {
+                    if (attempt == 1) {
+                        first = e;
+                    } else {
+                        String msg = "币安下单失败，重试1次后仍失败: symbol=" + cmd.symbol();
+                        notificationService.notify("BINANCE", "下单失败", msg);
+                        throw new IllegalStateException(msg, first == null ? e : first);
+                    }
+                }
+            }
             record.exchangeOrderId = exchangeOrderId;
             record.status = "真实已提交";
         }

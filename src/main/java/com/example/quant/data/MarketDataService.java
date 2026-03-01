@@ -1,6 +1,5 @@
 package com.example.quant.data;
 
-import com.example.quant.config.AppProperties;
 import com.example.quant.model.KlineCandle;
 import com.example.quant.model.StrategyIndicator;
 import com.example.quant.service.NotificationService;
@@ -13,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 取数据层服务。
+ * 取数据层服务（只用 WebSocket API）。
  */
 @Service
 public class MarketDataService {
@@ -35,43 +34,31 @@ public class MarketDataService {
 
     private final BinanceRestClient binanceRestClient;
     private final IndicatorCalculator indicatorCalculator;
-    private final AppProperties appProperties;
     private final NotificationService notificationService;
 
     public MarketDataService(BinanceRestClient binanceRestClient,
                              IndicatorCalculator indicatorCalculator,
-                             AppProperties appProperties,
                              NotificationService notificationService) {
         this.binanceRestClient = binanceRestClient;
         this.indicatorCalculator = indicatorCalculator;
-        this.appProperties = appProperties;
         this.notificationService = notificationService;
     }
 
     public Map<String, Object> latestTicker(String symbol) {
-        return tickerCache.get(symbol, binanceRestClient::tickerPrice);
+        return tickerCache.get(symbol, k -> retryOnce(
+                () -> binanceRestClient.tickerPrice(symbol),
+                "ticker获取失败",
+                "symbol=" + symbol
+        ));
     }
 
     public List<KlineCandle> latestKlines(String symbol, String interval, int limit) {
         String key = symbol + "_" + interval + "_" + limit;
-        return klineCache.get(key, k -> {
-            if (!appProperties.getData().isKlineUseWsApi()) {
-                return binanceRestClient.klines(symbol, interval, limit);
-            }
-
-            Exception last = null;
-            for (int attempt = 1; attempt <= 3; attempt++) {
-                try {
-                    return binanceRestClient.klinesByWsApi(symbol, interval, limit);
-                } catch (Exception e) {
-                    last = e;
-                }
-            }
-
-            String msg = "ws-api 获取K线失败，已重试2次: symbol=" + symbol + ", interval=" + interval;
-            notificationService.notify("MARKET_DATA", "K线获取失败", msg);
-            throw new IllegalStateException(msg, last);
-        });
+        return klineCache.get(key, k -> retryOnce(
+                () -> binanceRestClient.klinesByWsApi(symbol, interval, limit),
+                "K线获取失败",
+                "symbol=" + symbol + ", interval=" + interval
+        ));
     }
 
     public Map<String, Double> calculateIndicators(String symbol, String interval, List<StrategyIndicator> indicators) {
@@ -85,5 +72,28 @@ public class MarketDataService {
 
     public Double getCachedIndicator(String symbol, String interval, String indicatorName) {
         return indicatorCache.getIfPresent(symbol + "_" + interval + "_" + indicatorName);
+    }
+
+    private <T> T retryOnce(RetryTask<T> task, String title, String content) {
+        Exception first = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                return task.run();
+            } catch (Exception e) {
+                if (attempt == 1) {
+                    first = e;
+                } else {
+                    String msg = title + "，重试1次后仍失败: " + content;
+                    notificationService.notify("BINANCE", title, msg);
+                    throw new IllegalStateException(msg, first == null ? e : first);
+                }
+            }
+        }
+        throw new IllegalStateException("不可达代码");
+    }
+
+    @FunctionalInterface
+    private interface RetryTask<T> {
+        T run();
     }
 }
