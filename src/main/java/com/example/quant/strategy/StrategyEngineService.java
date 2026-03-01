@@ -1,6 +1,7 @@
 package com.example.quant.strategy;
 
 import com.example.quant.data.MarketDataService;
+import com.example.quant.data.OrderBookSubscriptionService;
 import com.example.quant.model.PlaceOrderCommand;
 import com.example.quant.model.StrategyDefinition;
 import com.example.quant.model.StrategyEntity;
@@ -26,14 +27,17 @@ public class StrategyEngineService {
     private final MarketDataService marketDataService;
     private final OrderService orderService;
     private final NotificationService notificationService;
+    private final OrderBookSubscriptionService orderBookSubscriptionService;
 
     public StrategyEngineService(List<StrategyTemplate> templates,
                                  MarketDataService marketDataService,
                                  OrderService orderService,
-                                 NotificationService notificationService) {
+                                 NotificationService notificationService,
+                                 OrderBookSubscriptionService orderBookSubscriptionService) {
         this.marketDataService = marketDataService;
         this.orderService = orderService;
         this.notificationService = notificationService;
+        this.orderBookSubscriptionService = orderBookSubscriptionService;
         for (StrategyTemplate template : templates) {
             strategyTemplates.put(template.strategyPath(), template);
         }
@@ -41,6 +45,9 @@ public class StrategyEngineService {
 
     public void enable(StrategyEntity entity) {
         activeStrategies.put(entity.id, entity);
+        if (entity.useOrderBook) {
+            orderBookSubscriptionService.subscribe(entity.symbol);
+        }
         notificationService.notify("STRATEGY", "策略启用", "策略已启用: " + entity.name);
     }
 
@@ -48,6 +55,9 @@ public class StrategyEngineService {
         StrategyEntity removed = activeStrategies.remove(strategyId);
         if (removed != null) {
             orderService.forceCloseBySymbol(removed.symbol, "策略禁用触发强平");
+            if (removed.useOrderBook && activeStrategies.values().stream().noneMatch(s -> s.useOrderBook && s.symbol.equalsIgnoreCase(removed.symbol))) {
+                orderBookSubscriptionService.unsubscribe(removed.symbol);
+            }
             notificationService.notify("STRATEGY", "策略禁用", "策略已禁用: " + removed.name);
         }
     }
@@ -77,7 +87,7 @@ public class StrategyEngineService {
         List<com.example.quant.model.KlineCandle> klines = marketDataService.latestKlines(entity.symbol, interval, 200);
         Map<String, Double> indicators = marketDataService.calculateIndicators(entity.symbol, interval, entity.indicators);
         Map<String, Object> orderBook = entity.useOrderBook
-                ? marketDataService.topLevelsOrderBook(entity.symbol, 5)
+                ? orderBookSubscriptionService.topLevels(entity.symbol, 5)
                 : Map.of();
 
         StrategyRuntimeContext context = new StrategyRuntimeContext(entity.symbol, interval, ticker, klines, indicators, orderBook);

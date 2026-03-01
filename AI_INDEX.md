@@ -17,12 +17,13 @@
 - ⚠️ 仍为内存存储（未接 DuckDB）。
 - ⚠️ 回测已升级为基于历史K线的MA交叉模拟（非完整撮合引擎）。
 - ✅ 新增 orderbook 深度快照读取（ws-api depth）与前N档查询接口。
+- ✅ 新增 orderbook 订阅管理与定时刷新（策略启用/停用自动订阅与释放）。
 
 ## 3. 关键目录索引
 - 启动入口：`src/main/java/com/example/quant/QuantApplication.java`
 - 配置与鉴权：`src/main/java/com/example/quant/config/`
 - 登录鉴权：`src/main/java/com/example/quant/auth/`
-- 数据层：`src/main/java/com/example/quant/data/`
+- 数据层：`src/main/java/com/example/quant/data/`（含 `OrderBookSubscriptionService` 订阅刷新）
 - 策略层：`src/main/java/com/example/quant/strategy/`
 - 下单层：`src/main/java/com/example/quant/order/`
 - 业务服务：`src/main/java/com/example/quant/service/`
