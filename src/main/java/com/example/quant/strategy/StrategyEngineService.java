@@ -76,8 +76,11 @@ public class StrategyEngineService {
         Map<String, Object> ticker = marketDataService.latestTicker(entity.symbol);
         List<com.example.quant.model.KlineCandle> klines = marketDataService.latestKlines(entity.symbol, interval, 200);
         Map<String, Double> indicators = marketDataService.calculateIndicators(entity.symbol, interval, entity.indicators);
+        Map<String, Object> orderBook = entity.useOrderBook
+                ? marketDataService.topLevelsOrderBook(entity.symbol, 5)
+                : Map.of();
 
-        StrategyRuntimeContext context = new StrategyRuntimeContext(entity.symbol, interval, ticker, klines, indicators);
+        StrategyRuntimeContext context = new StrategyRuntimeContext(entity.symbol, interval, ticker, klines, indicators, orderBook);
 
         Optional<PlaceOrderCommand> cmd = template.evaluate(definition, context);
         if (cmd.isEmpty()) {

@@ -32,6 +32,11 @@ public class MarketDataService {
             .maximumSize(5_000)
             .build();
 
+    private final Cache<String, Map<String, Object>> orderBookCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(5))
+            .maximumSize(2_000)
+            .build();
+
     private final BinanceRestClient binanceRestClient;
     private final IndicatorCalculator indicatorCalculator;
     private final NotificationService notificationService;
@@ -61,6 +66,27 @@ public class MarketDataService {
         ));
     }
 
+    public Map<String, Object> latestOrderBook(String symbol, int limit) {
+        String key = symbol + "_" + limit;
+        return orderBookCache.get(key, k -> retryOnce(
+                () -> binanceRestClient.depth(symbol, limit),
+                "OrderBook获取失败",
+                "symbol=" + symbol + ", limit=" + limit
+        ));
+    }
+
+    public Map<String, Object> topLevelsOrderBook(String symbol, int levels) {
+        Map<String, Object> book = latestOrderBook(symbol, 50);
+        List<List<Object>> bids = toLevels(book.get("bids"), levels);
+        List<List<Object>> asks = toLevels(book.get("asks"), levels);
+        return Map.of(
+                "symbol", symbol,
+                "lastUpdateId", book.getOrDefault("lastUpdateId", 0),
+                "bids", bids,
+                "asks", asks
+        );
+    }
+
     public Map<String, Double> calculateIndicators(String symbol, String interval, List<StrategyIndicator> indicators) {
         List<KlineCandle> klines = latestKlines(symbol, interval, 200);
         Map<String, Double> values = indicatorCalculator.calculateAll(klines, indicators);
@@ -72,6 +98,19 @@ public class MarketDataService {
 
     public Double getCachedIndicator(String symbol, String interval, String indicatorName) {
         return indicatorCache.getIfPresent(symbol + "_" + interval + "_" + indicatorName);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<List<Object>> toLevels(Object raw, int levels) {
+        if (!(raw instanceof List<?> rows)) {
+            return List.of();
+        }
+        int size = Math.max(1, levels);
+        return rows.stream()
+                .filter(List.class::isInstance)
+                .map(r -> (List<Object>) r)
+                .limit(size)
+                .toList();
     }
 
     private <T> T retryOnce(RetryTask<T> task, String title, String content) {

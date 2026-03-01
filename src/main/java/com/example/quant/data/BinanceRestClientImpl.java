@@ -79,6 +79,37 @@ public class BinanceRestClientImpl implements BinanceRestClient {
         });
     }
 
+
+    @Override
+    public Map<String, Object> depth(String symbol, int limit) {
+        return guard.execute(() -> {
+            try {
+                Map<String, Object> resp = callWsApi("depth", Map.of(
+                        "symbol", symbol,
+                        "limit", normalizeDepthLimit(limit)
+                ));
+                Object result = resp.get("result");
+                if (!(result instanceof Map<?, ?> map)) {
+                    throw new IllegalStateException("ws-api depth 返回格式异常");
+                }
+                return (Map<String, Object>) map;
+            } catch (Exception e) {
+                throw new IllegalStateException("WebSocket API 获取orderbook失败", e);
+            }
+        });
+    }
+
+    private int normalizeDepthLimit(int limit) {
+        int normalized = Math.max(5, limit);
+        int[] allowed = {5, 10, 20, 50, 100, 500, 1000, 5000};
+        for (int candidate : allowed) {
+            if (normalized <= candidate) {
+                return candidate;
+            }
+        }
+        return 5000;
+    }
+
     private Map<String, Object> callWsApi(String method, Map<String, Object> params) throws Exception {
         String reqId = UUID.randomUUID().toString();
         String payload = objectMapper.writeValueAsString(Map.of(

@@ -16,6 +16,7 @@
 - ⚠️ 默认 `app.trading.simulation=true`（模拟下单）。
 - ⚠️ 仍为内存存储（未接 DuckDB）。
 - ⚠️ 回测已升级为基于历史K线的MA交叉模拟（非完整撮合引擎）。
+- ✅ 新增 orderbook 深度快照读取（ws-api depth）与前N档查询接口。
 
 ## 3. 关键目录索引
 - 启动入口：`src/main/java/com/example/quant/QuantApplication.java`
