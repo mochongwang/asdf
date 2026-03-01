@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <title>量化交易系统（完整演示版）</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1100px; margin: 24px auto; }
+        h1 { margin-bottom: 6px; }
+        section { border: 1px solid #ddd; padding: 16px; margin-top: 16px; border-radius: 8px; }
+        label { display: block; margin-top: 10px; }
+        select, input, textarea, button { padding: 8px; width: 100%; box-sizing: border-box; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .row { display: flex; gap: 8px; }
+        .row button { width: auto; }
+        pre { background: #f7f7f7; padding: 12px; overflow: auto; }
+    </style>
+</head>
+<body>
+<h1>加密货币量化交易系统（完整流程演示）</h1>
+<p>先登录，再创建策略，启用后可触发、回测、查订单、查账户、查通知。</p>
+
+<section>
+    <h3>1) 登录</h3>
+    <div class="grid">
+        <label>用户名<input id="username" value="admin"/></label>
+        <label>密码<input id="password" type="password" value="123456"/></label>
+    </div>
+    <div class="row"><button onclick="login()">登录</button></div>
+    <div>Token: <code id="tokenText"></code></div>
+</section>
+
+<section>
+    <h3>2) 创建策略（尽量下拉）</h3>
+    <div class="grid">
+        <label>策略ID<input id="id" value="s1"/></label>
+        <label>策略名称<input id="name" value="演示策略1"/></label>
+        <label>交易对<select id="symbol"></select></label>
+        <label>触发周期<select id="triggerPeriod"></select></label>
+        <label>策略模板<select id="strategyPath"></select></label>
+        <label>是否用OrderBook<select id="useOrderBook"><option value="false">否</option><option value="true">是</option></select></label>
+        <label>止损%<input id="stopLossPct" type="number" value="5"/></label>
+        <label>止盈%<input id="takeProfitPct" type="number" value="10"/></label>
+        <label>杠杆<input id="leverage" type="number" value="10"/></label>
+        <label>最大下单金额<input id="maxAmount" type="number" value="10"/></label>
+        <label>指标类型<select id="indicatorType"></select></label>
+        <label>指标周期<select id="indicatorPeriod"></select></label>
+    </div>
+    <label>指标参数JSON<input id="indicatorParams" value='{"fast":12,"slow":26,"signal":9}'/></label>
+    <div class="row">
+        <button onclick="createStrategy()">创建策略</button>
+        <button onclick="listStrategies()">刷新策略列表</button>
+        <button onclick="enableStrategy()">启用策略</button>
+        <button onclick="disableStrategy()">禁用策略</button>
+        <button onclick="triggerStrategy()">手动触发</button>
+    </div>
+</section>
+
+<section>
+    <h3>3) 回测</h3>
+    <div class="grid">
+        <label>开始时间<input id="startTime" value="2024-01-01T00:00:00Z"/></label>
+        <label>结束时间<input id="endTime" value="2024-01-03T00:00:00Z"/></label>
+    </div>
+    <label>测试金额<input id="testAmount" type="number" value="100"/></label>
+    <div class="row"><button onclick="backtest()">运行回测</button></div>
+</section>
+
+<section>
+    <h3>4) 查询</h3>
+    <div class="row">
+        <button onclick="loadOrders()">订单列表</button>
+        <button onclick="loadAccounts()">账户列表</button>
+        <button onclick="loadNotifications()">通知日志</button>
+        <button onclick="loadLeverage()">杠杆信息</button>
+    </div>
+</section>
+
+<pre id="result"></pre>
+
+<script>
+let options = {};
+let token = null;
+
+function authHeaders() {
+    return token ? {'X-Auth-Token': token, 'Content-Type':'application/json'} : {'Content-Type':'application/json'};
+}
+
+function show(data){ document.getElementById('result').textContent = JSON.stringify(data, null, 2); }
+function strategyId(){ return document.getElementById('id').value; }
+
+async function loadOptions() {
+    const res = await fetch('/api/options');
+    options = await res.json();
+    fill('symbol', options.symbols);
+    fill('triggerPeriod', options.periodEnums);
+    fill('strategyPath', options.strategyPaths);
+    fill('indicatorType', options.indicators);
+    fill('indicatorPeriod', options.periodEnums);
+}
+
+function fill(id, values){
+    const s = document.getElementById(id);
+    s.innerHTML = '';
+    values.forEach(v => { const op = document.createElement('option'); op.value=v; op.text=v; s.add(op); });
+}
+
+async function login(){
+    const res = await fetch('/api/auth/login', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({username:username.value, password:password.value})
+    });
+    const data = await res.json();
+    token = data.token;
+    tokenText.textContent = token || '';
+    show(data);
+}
+
+function payload(){
+    return {
+        id: strategyId(),
+        name: name.value,
+        symbol: symbol.value,
+        stopLossPct: Number(stopLossPct.value),
+        takeProfitPct: Number(takeProfitPct.value),
+        leverage: Number(leverage.value),
+        maxAmount: Number(maxAmount.value),
+        triggerPeriod: triggerPeriod.value,
+        strategyPath: strategyPath.value,
+        useOrderBook: useOrderBook.value === 'true',
+        indicators: [{
+            name: indicatorType.value + '_1',
+            type: indicatorType.value,
+            period: indicatorPeriod.value,
+            paramsJson: indicatorParams.value
+        }]
+    };
+}
+
+async function createStrategy(){
+    const res = await fetch('/api/strategies', {method:'POST', headers:authHeaders(), body:JSON.stringify(payload())});
+    show(await res.json());
+}
+async function listStrategies(){ const res = await fetch('/api/strategies', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function enableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/enable`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
+async function disableStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/disable`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
+async function triggerStrategy(){ const res = await fetch(`/api/strategies/${strategyId()}/trigger`,{method:'POST', headers: token ? {'X-Auth-Token': token} : {}}); show(await res.text()); }
+async function backtest(){
+    const req = {startTime:startTime.value, endTime:endTime.value, testAmount:Number(testAmount.value)};
+    const res = await fetch(`/api/strategies/${strategyId()}/backtest`,{method:'POST', headers:authHeaders(), body:JSON.stringify(req)});
+    show(await res.json());
+}
+async function loadOrders(){ const res = await fetch('/api/orders?page=1&size=20', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadAccounts(){ const res = await fetch('/api/accounts', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadNotifications(){ const res = await fetch('/api/notifications', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+async function loadLeverage(){ const res = await fetch('/api/leverage', {headers: token ? {'X-Auth-Token': token} : {}}); show(await res.json()); }
+
+loadOptions();
+</script>
+</body>
+</html>
