@@ -87,6 +87,7 @@ mvn spring-boot:run
 
 ## 本次补齐（按需求文档）
 
+- K线获取：默认优先使用 Binance WebSocket API（`app.data.kline-use-ws-api=true`），失败自动降级 REST。
 - 取数据层：已对接币安 `ticker` + `klines` REST。
 - 指标计算：新增基础指标计算器，支持 MA、RSI（并预留其他指标扩展）。
 - 下单层：新增真实币安下单客户端（签名请求），并通过 `app.trading.simulation` 开关控制模拟/真实模式。

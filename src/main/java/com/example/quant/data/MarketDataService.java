@@ -1,5 +1,6 @@
 package com.example.quant.data;
 
+import com.example.quant.config.AppProperties;
 import com.example.quant.model.KlineCandle;
 import com.example.quant.model.StrategyIndicator;
 import com.github.benmanes.caffeine.cache.Cache;
@@ -16,19 +17,16 @@ import java.util.Map;
 @Service
 public class MarketDataService {
 
-    /** 缓存 key: symbol，value: ticker JSON。 */
     private final Cache<String, Map<String, Object>> tickerCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(10))
             .maximumSize(1_000)
             .build();
 
-    /** 缓存 key: symbol_interval_limit，value: klines。 */
     private final Cache<String, List<KlineCandle>> klineCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(20))
             .maximumSize(2_000)
             .build();
 
-    /** 缓存 key: symbol_interval_indicatorName，value: indicatorValue。 */
     private final Cache<String, Double> indicatorCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(20))
             .maximumSize(5_000)
@@ -36,10 +34,14 @@ public class MarketDataService {
 
     private final BinanceRestClient binanceRestClient;
     private final IndicatorCalculator indicatorCalculator;
+    private final AppProperties appProperties;
 
-    public MarketDataService(BinanceRestClient binanceRestClient, IndicatorCalculator indicatorCalculator) {
+    public MarketDataService(BinanceRestClient binanceRestClient,
+                             IndicatorCalculator indicatorCalculator,
+                             AppProperties appProperties) {
         this.binanceRestClient = binanceRestClient;
         this.indicatorCalculator = indicatorCalculator;
+        this.appProperties = appProperties;
     }
 
     public Map<String, Object> latestTicker(String symbol) {
@@ -48,7 +50,16 @@ public class MarketDataService {
 
     public List<KlineCandle> latestKlines(String symbol, String interval, int limit) {
         String key = symbol + "_" + interval + "_" + limit;
-        return klineCache.get(key, k -> binanceRestClient.klines(symbol, interval, limit));
+        return klineCache.get(key, k -> {
+            if (appProperties.getData().isKlineUseWsApi()) {
+                try {
+                    return binanceRestClient.klinesByWsApi(symbol, interval, limit);
+                } catch (Exception ignored) {
+                    // ws-api 异常时自动降级到 REST。
+                }
+            }
+            return binanceRestClient.klines(symbol, interval, limit);
+        });
     }
 
     public Map<String, Double> calculateIndicators(String symbol, String interval, List<StrategyIndicator> indicators) {

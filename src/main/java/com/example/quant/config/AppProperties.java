@@ -12,11 +12,13 @@ public class AppProperties {
     private final Trading trading = new Trading();
     private final Notify notify = new Notify();
     private final Scheduler scheduler = new Scheduler();
+    private final Data data = new Data();
 
     public Auth getAuth() { return auth; }
     public Trading getTrading() { return trading; }
     public Notify getNotify() { return notify; }
     public Scheduler getScheduler() { return scheduler; }
+    public Data getData() { return data; }
 
     public static class Auth {
         private String username = "admin";
@@ -28,11 +30,8 @@ public class AppProperties {
     }
 
     public static class Trading {
-        /** 是否模拟下单。 */
         private boolean simulation = true;
-        /** 币安 API KEY。 */
         private String apiKey = "";
-        /** 币安 API SECRET。 */
         private String apiSecret = "";
 
         public boolean isSimulation() { return simulation; }
@@ -59,5 +58,21 @@ public class AppProperties {
         public void setTriggerIntervalMs(long triggerIntervalMs) { this.triggerIntervalMs = triggerIntervalMs; }
         public boolean isEnabled() { return enabled; }
         public void setEnabled(boolean enabled) { this.enabled = enabled; }
+    }
+
+    /**
+     * 数据层配置。
+     */
+    public static class Data {
+        /** K线是否优先使用 WebSocket API 请求（ws-api）。 */
+        private boolean klineUseWsApi = true;
+
+        public boolean isKlineUseWsApi() {
+            return klineUseWsApi;
+        }
+
+        public void setKlineUseWsApi(boolean klineUseWsApi) {
+            this.klineUseWsApi = klineUseWsApi;
+        }
     }
 }

@@ -16,3 +16,5 @@ app:
   scheduler:
     enabled: true
     trigger-interval-ms: 30000
+  data:
+    kline-use-ws-api: true
