@@ -18,15 +18,40 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 下单层服务（只用 REST API，订单记录持久化到 DuckDB）。
+ * 下单服务。
+ *
+ * <p>职责：</p>
+ * <ul>
+ *   <li>统一订单入口（模拟单/真实单）</li>
+ *   <li>真实下单失败“重试 1 次 + 通知”</li>
+ *   <li>订单记录落地 DuckDB</li>
+ *   <li>接收交易所轮询/用户流回报并回写状态</li>
+ * </ul>
+ *
+ * <p>需求覆盖：</p>
+ * <ul>
+ *   <li>下单只走 REST API（真实模式）</li>
+ *   <li>默认 simulation=true 的安全开关</li>
+ *   <li>失败重试一次并通知</li>
+ *   <li>订单持久化与状态同步</li>
+ * </ul>
  */
 @Service
 public class OrderService {
 
+    /** 业务配置（含 simulation 开关、API 凭证等）。 */
     private final AppProperties properties;
+
+    /** 行情客户端：用于下单前按最新价格估算数量。 */
     private final BinanceRestClient marketClient;
+
+    /** 真实交易客户端（REST 签名下单）。 */
     private final BinanceTradeClient binanceTradeClient;
+
+    /** 通知服务（重试失败后告警）。 */
     private final NotificationService notificationService;
+
+    /** DuckDB 访问模板。 */
     private final JdbcTemplate jdbcTemplate;
 
     public OrderService(AppProperties properties,
@@ -41,6 +66,14 @@ public class OrderService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * 统一下单入口。
+     *
+     * <p>需求覆盖：模拟/真实下单分流，真实模式失败重试一次并通知，订单记录持久化。</p>
+     *
+     * @param cmd 下单命令
+     * @return 本地订单 ID（localOrderId）
+     */
     public String placeOrder(PlaceOrderCommand cmd) {
         String localOrderId = UUID.randomUUID().toString();
         OrderRecord record = new OrderRecord();
@@ -84,6 +117,12 @@ public class OrderService {
         return localOrderId;
     }
 
+    /**
+     * 按交易对写入强平记录（系统内部指令）。
+     *
+     * @param symbol 交易对
+     * @param remark 备注说明
+     */
     public void forceCloseBySymbol(String symbol, String remark) {
         String localOrderId = UUID.randomUUID().toString();
         OrderRecord closeRecord = new OrderRecord();
@@ -101,7 +140,13 @@ public class OrderService {
         insertOrder(closeRecord);
     }
 
-
+    /**
+     * 同步交易所订单状态（请求式补偿同步路径）。
+     *
+     * @param exchangeOrderId 交易所订单号
+     * @param symbol 交易对
+     * @param status 交易所状态
+     */
     public void syncExchangeOrder(String exchangeOrderId, String symbol, String status) {
         if (exchangeOrderId == null || exchangeOrderId.isBlank()) {
             return;
@@ -136,7 +181,18 @@ public class OrderService {
         }
     }
 
-
+    /**
+     * 同步 executionReport（用户流推送路径）。
+     *
+     * <p>需求覆盖：私有用户流订单状态同步到本地订单表。</p>
+     *
+     * @param symbol 交易对
+     * @param exchangeOrderId 交易所订单号
+     * @param status 订单状态
+     * @param side 买卖方向（BUY/SELL）
+     * @param executedQty 已成交数量
+     * @param price 成交价（或订单价格）
+     */
     public void syncExecutionReport(String symbol,
                                     String exchangeOrderId,
                                     String status,
@@ -179,6 +235,12 @@ public class OrderService {
         }
     }
 
+    /**
+     * 按条件分页查询订单。
+     *
+     * @param query 查询条件
+     * @return 订单列表
+     */
     public List<OrderRecord> query(OrderQuery query) {
         int page = query.page() == null ? 1 : Math.max(query.page(), 1);
         int size = query.size() == null ? 20 : Math.max(query.size(), 1);
@@ -207,10 +269,20 @@ public class OrderService {
         );
     }
 
+    /**
+     * 查询全部订单。
+     *
+     * @return 全量订单列表（按创建时间倒序）
+     */
     public List<OrderRecord> listOrders() {
         return jdbcTemplate.query("SELECT * FROM orders ORDER BY created_at DESC", this::mapRow);
     }
 
+    /**
+     * 插入订单记录。
+     *
+     * @param record 订单实体
+     */
     private void insertOrder(OrderRecord record) {
         jdbcTemplate.update(
                 """
@@ -231,6 +303,14 @@ public class OrderService {
         );
     }
 
+    /**
+     * JDBC 行映射。
+     *
+     * @param rs 结果集
+     * @param rowNum 行号
+     * @return 订单实体
+     * @throws SQLException 数据库访问异常
+     */
     private OrderRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
         OrderRecord r = new OrderRecord();
         r.localOrderId = rs.getString("local_order_id");
@@ -247,6 +327,15 @@ public class OrderService {
         return r;
     }
 
+    /**
+     * 按最新行情换算下单数量。
+     *
+     * <p>需求覆盖：下单金额（USDT）转换为数量，统一以最新 ticker 价格计算。</p>
+     *
+     * @param symbol 交易对
+     * @param amountUsdt 下单金额（USDT）
+     * @return 下单数量
+     */
     private double calculateQuantity(String symbol, double amountUsdt) {
         Map<String, Object> ticker = marketClient.tickerPrice(symbol);
         Object priceObj = ticker.get("price");
