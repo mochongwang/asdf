@@ -23,13 +23,21 @@ public class NotificationController {
     }
 
     @GetMapping
-    public List<NotificationLog> list(@RequestParam(required = false) String eventType,
+    public List<NotificationLog> list(@RequestParam(required = false) Long id,
+                                      @RequestParam(required = false) String eventType,
                                       @RequestParam(required = false) String title,
-                                      @RequestParam(required = false) String content) {
-        return notificationService.list().stream()
-                .filter(x -> eventType == null || eventType.isBlank() || x.eventType.contains(eventType))
-                .filter(x -> title == null || title.isBlank() || x.title.contains(title))
-                .filter(x -> content == null || content.isBlank() || x.content.contains(content))
-                .toList();
+                                      @RequestParam(required = false) String content,
+                                      @RequestParam(required = false) Long sentFromEpochSecond,
+                                      @RequestParam(required = false) Long sentToEpochSecond,
+                                      @RequestParam(required = false) Long createdFromEpochSecond) {
+        return notificationService.query(
+                id,
+                eventType,
+                title,
+                content,
+                sentFromEpochSecond,
+                sentToEpochSecond,
+                createdFromEpochSecond
+        );
     }
 }

@@ -1,9 +1,9 @@
 package com.example.quant.service;
 
 import com.example.quant.model.NotificationLog;
-import com.example.quant.notify.WeComWebhookClient;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import com.example.quant.notify.WeComWebhookClient;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -48,9 +48,44 @@ public class NotificationService {
     }
 
     public List<NotificationLog> list() {
+        return query(null, null, null, null, null, null, null);
+    }
+
+    public List<NotificationLog> query(Long id,
+                                       String eventType,
+                                       String title,
+                                       String content,
+                                       Long sentFromEpochSecond,
+                                       Long sentToEpochSecond,
+                                       Long createdFromEpochSecond) {
+        long sentFrom = sentFromEpochSecond == null ? 0 : sentFromEpochSecond * 1000;
+        long sentTo = sentToEpochSecond == null ? Long.MAX_VALUE : sentToEpochSecond * 1000;
+        long createdFrom = createdFromEpochSecond == null ? 0 : createdFromEpochSecond * 1000;
+        String event = eventType == null ? "" : eventType.trim();
+        String t = title == null ? "" : title.trim();
+        String c = content == null ? "" : content.trim();
+
         return jdbcTemplate.query(
-                "SELECT id,event_type,title,content,sent_at,created_at FROM notification_logs ORDER BY created_at DESC",
-                this::mapRow
+                """
+                SELECT id,event_type,title,content,sent_at,created_at
+                FROM notification_logs
+                WHERE (? IS NULL OR id = ?)
+                  AND (? = '' OR event_type LIKE CONCAT('%', ?, '%'))
+                  AND (? = '' OR title LIKE CONCAT('%', ?, '%'))
+                  AND (? = '' OR content LIKE CONCAT('%', ?, '%'))
+                  AND sent_at >= ?
+                  AND sent_at <= ?
+                  AND created_at >= ?
+                ORDER BY created_at DESC
+                """,
+                this::mapRow,
+                id, id,
+                event, event,
+                t, t,
+                c, c,
+                sentFrom,
+                sentTo,
+                createdFrom
         );
     }
 
