@@ -65,5 +65,24 @@ public class DatabaseSchemaInitializer implements ApplicationRunner {
                     created_at BIGINT
                 )
                 """);
+
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS accounts (
+                    apikey VARCHAR PRIMARY KEY,
+                    balance DOUBLE,
+                    available_balance DOUBLE,
+                    frozen_balance DOUBLE,
+                    updated_at BIGINT
+                )
+                """);
+
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS leverage_info (
+                    symbol VARCHAR PRIMARY KEY,
+                    cross_leverage INTEGER,
+                    isolated_leverage INTEGER,
+                    created_at BIGINT
+                )
+                """);
     }
 }
