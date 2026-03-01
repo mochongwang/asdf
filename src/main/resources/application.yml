@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: crypto-quant-system
+
+app:
+  auth:
+    username: admin
+    password: 123456
+  trading:
+    simulation: true
+    api-key: ""
+    api-secret: ""
+  notify:
+    enabled: false
+    wechat-webhook: ""
+  scheduler:
+    enabled: true
+    trigger-interval-ms: 30000
+  data:
+    kline-use-ws-api: true
+    duckdb-path: ./data/quant.duckdb
