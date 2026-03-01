@@ -58,12 +58,31 @@ public class MarketDataService {
     }
 
     public List<KlineCandle> latestKlines(String symbol, String interval, int limit) {
-        String key = symbol + "_" + interval + "_" + limit;
+        return latestKlinesWithNamespace("", symbol, interval, limit);
+    }
+
+
+    public List<KlineCandle> latestKlinesWithNamespace(String namespace, String symbol, String interval, int limit) {
+        String ns = (namespace == null || namespace.isBlank()) ? "" : namespace + "_";
+        String key = ns + symbol + "_" + interval + "_" + limit;
         return klineCache.get(key, k -> retryOnce(
                 () -> binanceRestClient.klinesByWsApi(symbol, interval, limit),
                 "K线获取失败",
-                "symbol=" + symbol + ", interval=" + interval
+                "namespace=" + ns + ", symbol=" + symbol + ", interval=" + interval
         ));
+    }
+
+    public Map<String, Double> calculateIndicatorsWithNamespace(String namespace,
+                                                                String symbol,
+                                                                String interval,
+                                                                List<StrategyIndicator> indicators) {
+        List<KlineCandle> klines = latestKlinesWithNamespace(namespace, symbol, interval, 200);
+        Map<String, Double> values = indicatorCalculator.calculateAll(klines, indicators);
+        String ns = (namespace == null || namespace.isBlank()) ? "" : namespace + "_";
+        for (Map.Entry<String, Double> entry : values.entrySet()) {
+            indicatorCache.put(ns + symbol + "_" + interval + "_" + entry.getKey(), entry.getValue());
+        }
+        return values;
     }
 
     public Map<String, Object> latestOrderBook(String symbol, int limit) {
@@ -88,12 +107,7 @@ public class MarketDataService {
     }
 
     public Map<String, Double> calculateIndicators(String symbol, String interval, List<StrategyIndicator> indicators) {
-        List<KlineCandle> klines = latestKlines(symbol, interval, 200);
-        Map<String, Double> values = indicatorCalculator.calculateAll(klines, indicators);
-        for (Map.Entry<String, Double> entry : values.entrySet()) {
-            indicatorCache.put(symbol + "_" + interval + "_" + entry.getKey(), entry.getValue());
-        }
-        return values;
+        return calculateIndicatorsWithNamespace("", symbol, interval, indicators);
     }
 
     public Double getCachedIndicator(String symbol, String interval, String indicatorName) {

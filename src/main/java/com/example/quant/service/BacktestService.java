@@ -29,7 +29,10 @@ public class BacktestService {
             throw new IllegalArgumentException("回测结束时间必须晚于开始时间");
         }
 
-        List<KlineCandle> source = marketDataService.latestKlines(strategy.symbol, strategy.triggerPeriod.code(), 500);
+        String namespace = "HC_" + strategy.id;
+        List<KlineCandle> source = marketDataService.latestKlinesWithNamespace(namespace, strategy.symbol, strategy.triggerPeriod.code(), 500);
+        // 回测时先在 HC_ 命名空间计算一次指标，避免污染实时缓存。
+        marketDataService.calculateIndicatorsWithNamespace(namespace, strategy.symbol, strategy.triggerPeriod.code(), strategy.indicators);
         List<KlineCandle> klines = source.stream()
                 .filter(k -> k.openTime() >= req.startTime().toEpochMilli() && k.closeTime() <= req.endTime().toEpochMilli())
                 .sorted(Comparator.comparingLong(KlineCandle::openTime))
