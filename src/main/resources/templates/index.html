@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8"/>
+    <title>量化策略管理（示例）</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 24px auto; }
+        label { display: block; margin-top: 12px; }
+        select, input { width: 100%; padding: 8px; }
+        button { margin-top: 16px; padding: 10px 16px; }
+        .result { margin-top: 16px; background: #f5f5f5; padding: 12px; }
+    </style>
+</head>
+<body>
+<h1>策略创建（输入尽量可选）</h1>
+<p>该页面演示“能下拉选择就不手填”的思路。</p>
+
+<form id="strategyForm">
+    <label>策略ID
+        <input id="id" value="demo-strategy-1" required/>
+    </label>
+
+    <label>策略名称
+        <input id="name" value="演示策略" required/>
+    </label>
+
+    <label>交易对
+        <select id="symbol"></select>
+    </label>
+
+    <label>触发周期
+        <select id="period"></select>
+    </label>
+
+    <label>策略模板
+        <select id="strategyPath"></select>
+    </label>
+
+    <label>是否使用OrderBook
+        <select id="useOrderBook">
+            <option value="false">否</option>
+            <option value="true">是</option>
+        </select>
+    </label>
+
+    <button type="submit">创建策略</button>
+</form>
+
+<pre class="result" id="result"></pre>
+
+<script>
+    async function loadOptions() {
+        const res = await fetch('/api/options');
+        const options = await res.json();
+
+        fill('symbol', options.symbols);
+        fill('period', options.periods);
+        fill('strategyPath', options.strategyPaths);
+    }
+
+    function fill(id, values) {
+        const select = document.getElementById(id);
+        values.forEach(v => {
+            const op = document.createElement('option');
+            op.value = v;
+            op.text = v;
+            select.add(op);
+        });
+    }
+
+    document.getElementById('strategyForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const payload = {
+            id: document.getElementById('id').value,
+            name: document.getElementById('name').value,
+            symbol: document.getElementById('symbol').value,
+            triggerPeriod: document.getElementById('period').value.replace('1m','M1').replace('5m','M5').replace('15m','M15').replace('1h','H1').replace('4h','H4').replace('1d','D1'),
+            strategyPath: document.getElementById('strategyPath').value,
+            useOrderBook: document.getElementById('useOrderBook').value === 'true'
+        };
+
+        const res = await fetch('/api/strategies', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        document.getElementById('result').textContent = JSON.stringify(await res.json(), null, 2);
+    });
+
+    loadOptions();
+</script>
+</body>
+</html>
