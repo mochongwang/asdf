@@ -18,6 +18,11 @@ public class AuthTokenInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        // 允许 CORS 预检请求直接通过。
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+
         String token = request.getHeader("X-Auth-Token");
         if (authService.validate(token)) {
             return true;

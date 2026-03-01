@@ -25,4 +25,10 @@ public class GlobalExceptionHandler {
     public Map<String, Object> handleValidation(MethodArgumentNotValidException e) {
         return Map.of("success", false, "message", "参数校验失败", "detail", e.getMessage());
     }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public Map<String, Object> handleException(Exception e) {
+        return Map.of("success", false, "message", "系统内部错误", "detail", e.getMessage());
+    }
 }

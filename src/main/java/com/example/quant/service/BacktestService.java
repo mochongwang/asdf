@@ -18,6 +18,10 @@ import java.util.concurrent.ThreadLocalRandom;
 public class BacktestService {
 
     public BacktestSummary runBacktest(StrategyEntity strategy, BacktestRequest req) {
+        if (req.endTime().isBefore(req.startTime()) || req.endTime().equals(req.startTime())) {
+            throw new IllegalArgumentException("回测结束时间必须晚于开始时间");
+        }
+
         long minutes = Duration.between(req.startTime(), req.endTime()).toMinutes();
         int orderCount = (int) Math.max(1, Math.min(200, minutes / 30));
 

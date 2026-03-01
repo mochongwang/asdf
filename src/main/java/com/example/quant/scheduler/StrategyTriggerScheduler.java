@@ -28,9 +28,15 @@ public class StrategyTriggerScheduler {
         if (!properties.getScheduler().isEnabled()) {
             return;
         }
-        var result = strategyEngineService.triggerAllActive();
-        if (!result.isEmpty()) {
-            log.info("自动触发策略结果: {}", result);
+
+        try {
+            var result = strategyEngineService.triggerAllActive();
+            if (!result.isEmpty()) {
+                log.info("自动触发策略结果: {}", result);
+            }
+        } catch (Exception e) {
+            // 避免调度线程因单次异常中断
+            log.error("自动触发策略失败: {}", e.getMessage());
         }
     }
 }

@@ -21,6 +21,10 @@ public class StrategyService {
     private final Map<String, StrategyEntity> strategyStore = new ConcurrentHashMap<>();
 
     public StrategyEntity create(StrategyRequest req) {
+        if (strategyStore.containsKey(req.id())) {
+            throw new IllegalArgumentException("策略ID已存在: " + req.id());
+        }
+
         StrategyEntity entity = new StrategyEntity();
         entity.id = req.id();
         entity.name = req.name();
@@ -43,6 +47,10 @@ public class StrategyService {
     }
 
     public StrategyEntity update(String id, StrategyRequest req) {
+        if (!id.equals(req.id())) {
+            throw new IllegalArgumentException("路径ID与请求体ID不一致");
+        }
+
         StrategyEntity old = getById(id);
         old.name = req.name();
         old.symbol = req.symbol();
@@ -83,6 +91,9 @@ public class StrategyService {
     }
 
     private void validatePeriods(com.example.quant.model.Period triggerPeriod, List<StrategyIndicator> indicators) {
+        if (indicators == null || indicators.isEmpty()) {
+            throw new IllegalArgumentException("指标明细不能为空");
+        }
         boolean matched = indicators.stream().anyMatch(i -> i.period() == triggerPeriod);
         if (!matched) {
             throw new IllegalArgumentException("主表触发周期必须和明细表至少一条周期一致");
