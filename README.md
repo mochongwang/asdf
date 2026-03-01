@@ -87,6 +87,7 @@ mvn spring-boot:run
 
 ## 本次补齐（按需求文档）
 
+- 指标计算统一使用 `com.tictactec.ta.lib.Core`（TA-Lib）。
 - 下单：只用 Binance REST API，失败后重试1次，仍失败则报错并通知。
 - K线获取：只用 Binance WebSocket API，失败后重试1次，仍失败则报错并通知。
 - 取数据层：ticker 与 klines 均通过 Binance WebSocket API（ws-api）获取。
